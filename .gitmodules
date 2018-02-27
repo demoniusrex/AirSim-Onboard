@@ -1,3 +1,4 @@
 [submodule "Onboard-SDK"]
 	path = Onboard-SDK
 	url = https://github.com/demoniusrex/Onboard-SDK.git
+	branch = 3.6
