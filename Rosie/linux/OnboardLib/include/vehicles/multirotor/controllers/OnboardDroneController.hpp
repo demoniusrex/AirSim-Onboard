@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef msr_airlib_OnBoardDroneController_hpp
-#define msr_airlib_OnBoardDroneController_hpp
+#ifndef msr_airlib_OnboardDroneController_hpp
+#define msr_airlib_OnboardDroneController_hpp
 
 #include <queue>
 #include <mutex>
@@ -18,7 +18,7 @@
 #include "common/common_utils/Timer.hpp"
 #include "common/CommonStructs.hpp"
 #include "common/VectorMath.hpp"
-#include "vehicles/multirotor//MultiRotor.hpp"
+#include "vehicles/multirotor/MultiRotor.hpp"
 #include "vehicles/multirotor/controllers/DroneControllerBase.hpp"
 #include "controllers/PidController.hpp"
 
@@ -47,7 +47,7 @@ using namespace msr::airlib;
 
 namespace Rosie { namespace OnboardLib {
 
-class OnBoardDroneController : public DroneControllerBase
+class OnboardDroneController : public DroneControllerBase
 {
 public:
     typedef msr::airlib::GeoPoint GeoPoint;
@@ -75,11 +75,11 @@ public:
 
 public:
     //required for pimpl
-    OnBoardDroneController();
-    virtual ~OnBoardDroneController();
+    OnboardDroneController();
+    virtual ~OnboardDroneController();
 
-    //non-base interface specific to OnBoardDroneController
-    void initialize(const ConnectionInfo& connection_info, const SensorCollection* sensors, bool is_simulation);
+    //non-base interface specific to OnboardDroneController
+    void initialize(const ConnectionInfo& connection_info, const SensorCollection* sensors, bool is_simulation, int argc, char* argv[]);
     ConnectionInfo getOnboardConnectionInfo();
     
     //TODO: get rid of below methods?
@@ -139,7 +139,7 @@ private: //pimpl
     std::unique_ptr<impl> pimpl_;
 };
 
-struct OnBoardDroneController::impl {
+struct OnboardDroneController::impl {
 public:
     // static const int onboardFlightCommandStop = 9900;   ///< 
     static const int RotorControlsCount = 8;
@@ -151,9 +151,9 @@ public:
     std::shared_ptr<DroneControllerBase> onboard_vehicle_control_;
 
     std::mutex heartbeat_mutex_, mocap_pose_mutex_, set_mode_mutex_, status_text_mutex_, last_message_mutex_;
-    OnBoardDroneController* parent_;
+    OnboardDroneController* parent_;
 
-    impl(OnBoardDroneController* parent)
+    impl(OnboardDroneController* parent)
         : parent_(parent)
     {
     }
@@ -189,7 +189,7 @@ public:
     common_utils::Timer hil_message_timer_;
     common_utils::Timer sitl_message_timer_;
 
-    void initialize(const ConnectionInfo& connection_info, const SensorCollection* sensors, bool is_simulation, int argc, const char* argv[])
+    void initialize(const ConnectionInfo& connection_info, const SensorCollection* sensors, bool is_simulation, int argc, char* argv[])
     {
         connection_info_ = connection_info;
         sensors_ = sensors;
@@ -376,7 +376,7 @@ public:
 
         addStatusMessage(Utils::stringf("Connecting to Onboard flight controller over serial port: %s, baud rate %d ....", port_name_auto.c_str(), baud_rate));
                 
-        onboard_vehicle_ = linuxEnvironment->getVehicle();   
+        onboard_vehicle_ = std::make_shared<Vehicle>(linuxEnvironment->getVehicle());   
         
         addStatusMessage("Connected to Onboard flight controller over serial port.");
 
@@ -623,8 +623,6 @@ public:
         updateState();
         Kinematics::State state;
         
-        Vector3r deltaNed;
-
         double                     deltaLon;
         double                     deltaLat;
         Telemetry::TypeMap<Telemetry::TOPIC_GPS_FUSED>::type currentSubscriptionGPS;
@@ -644,11 +642,8 @@ public:
 
         deltaLon   = currentSubscriptionGPS.longitude - originGPS.longitude;
         deltaLat   = currentSubscriptionGPS.latitude - originGPS.latitude;
-        deltaNed.x = deltaLat * C_EARTH;
-        deltaNed.y = deltaLon * C_EARTH * cos(currentSubscriptionGPS.latitude);
-        deltaNed.z = currentSubscriptionGPS.altitude - originGPS.altitude;
         
-        state.pose.position = deltaNed;
+        state.pose.position = Vector3r(deltaLat * C_EARTH, deltaLon * C_EARTH * cos(currentSubscriptionGPS.latitude), currentSubscriptionGPS.altitude - originGPS.altitude);
         state.pose.orientation = VectorMath::toQuaternion(eulerOrientation.x, eulerOrientation.y, eulerOrientation.z);
         state.twist.linear = Vector3r(currentVelocity.data.x, currentVelocity.data.y, currentVelocity.data.z);
         state.twist.angular = Vector3r(currentAngularRate.x, currentAngularRate.y, currentAngularRate.z);
@@ -662,7 +657,6 @@ public:
     Vector3r getPosition()
     {
         updateState();
-        Vector3r deltaNed;
         double deltaLon;
         double deltaLat;
         Telemetry::TypeMap<Telemetry::TOPIC_GPS_FUSED>::type currentSubscriptionGPS;
@@ -671,11 +665,8 @@ public:
 
         deltaLon   = currentSubscriptionGPS.longitude - originGPS.longitude;
         deltaLat   = currentSubscriptionGPS.latitude - originGPS.latitude;
-        deltaNed.x = deltaLat * C_EARTH;
-        deltaNed.y = deltaLon * C_EARTH * cos(currentSubscriptionGPS.latitude);
-        deltaNed.z = currentSubscriptionGPS.altitude - originGPS.altitude;
         
-        return deltaNed;
+        return Vector3r(deltaLat * C_EARTH, deltaLon * C_EARTH * cos(currentSubscriptionGPS.latitude), currentSubscriptionGPS.altitude - originGPS.altitude);;
     }
 
     Vector3r getVelocity()
@@ -805,7 +796,7 @@ public:
                 motorsNotStarted < timeoutCycles)
         {
             motorsNotStarted++;
-            fprintf(stderr, "Motors not started %d, %d\n", onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>(), onboard_vehicle_->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() );
+            fprintf(stderr, "Motors not started %d, %d\n", onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>(), onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>() );
             updateState();
             usleep(1000000);
         }
@@ -1203,59 +1194,59 @@ public:
 }; //impl
 
 //empty constructor required for pimpl
-OnBoardDroneController::OnBoardDroneController()
+OnboardDroneController::OnboardDroneController()
 {
     pimpl_.reset(new impl(this));
 }
 
-OnBoardDroneController::~OnBoardDroneController()
+OnboardDroneController::~OnboardDroneController()
 {
     pimpl_->closeAllConnection();
 }
 
-void OnBoardDroneController::initialize(const ConnectionInfo& connection_info, const SensorCollection* sensors, bool is_simulation, int argc, const char* argv[])
+void OnboardDroneController::initialize(const ConnectionInfo& connection_info, const SensorCollection* sensors, bool is_simulation, int argc, char* argv[])
 {
-    pimpl_->initialize(connection_info, sensors, is_simulation);
+    pimpl_->initialize(connection_info, sensors, is_simulation, argc, argv);
 }
 
-OnBoardDroneController::ConnectionInfo OnBoardDroneController::getOnboardConnectionInfo()
+OnboardDroneController::ConnectionInfo OnboardDroneController::getOnboardConnectionInfo()
 {
     return pimpl_->getOnboardConnectionInfo();
 }
-void OnBoardDroneController::sendImage(unsigned char data[], uint32_t length, uint16_t width, uint16_t height)
+void OnboardDroneController::sendImage(unsigned char data[], uint32_t length, uint16_t width, uint16_t height)
 {
     pimpl_->sendImage(data, length, width, height);
 }
 
-bool OnBoardDroneController::hasVideoRequest()
+bool OnboardDroneController::hasVideoRequest()
 {
     return pimpl_->hasVideoRequest();
 }
 
 //*** Start: VehicleControllerBase implementation ***//
-void OnBoardDroneController::reset()
+void OnboardDroneController::reset()
 {
     DroneControllerBase::reset();
     pimpl_->reset();
 }
-void OnBoardDroneController::update()
+void OnboardDroneController::update()
 {
     DroneControllerBase::update();
     pimpl_->update();
 }
-real_T OnBoardDroneController::getVertexControlSignal(unsigned int rotor_index)
+real_T OnboardDroneController::getVertexControlSignal(unsigned int rotor_index)
 {
     return pimpl_->getVertexControlSignal(rotor_index);
 }
-size_t OnBoardDroneController::getVertexCount()
+size_t OnboardDroneController::getVertexCount()
 {
     return impl::RotorControlsCount;
 }
-void OnBoardDroneController::getStatusMessages(std::vector<std::string>& messages)
+void OnboardDroneController::getStatusMessages(std::vector<std::string>& messages)
 {
     pimpl_->getStatusMessages(messages);
 }
-bool OnBoardDroneController::isAvailable(std::string& message)
+bool OnboardDroneController::isAvailable(std::string& message)
 {
     return pimpl_->isAvailable(message);
 }
@@ -1265,141 +1256,141 @@ bool OnBoardDroneController::isAvailable(std::string& message)
 
 
 //DroneControlBase
-Kinematics::State OnBoardDroneController::getKinematicsEstimated()
+Kinematics::State OnboardDroneController::getKinematicsEstimated()
 {
     return pimpl_->getKinematicsEstimated();
 }
 
-Vector3r OnBoardDroneController::getPosition()
+Vector3r OnboardDroneController::getPosition()
 {
     return pimpl_->getPosition();
 }
 
-Vector3r OnBoardDroneController::getVelocity()
+Vector3r OnboardDroneController::getVelocity()
 {
     return pimpl_->getVelocity();
 }
 
-Quaternionr OnBoardDroneController::getOrientation()
+Quaternionr OnboardDroneController::getOrientation()
 {
     return pimpl_->getOrientation();
 }
 
-GeoPoint OnBoardDroneController::getHomeGeoPoint()
+GeoPoint OnboardDroneController::getHomeGeoPoint()
 {
     return pimpl_->getHomeGeoPoint();
 }
 
-GeoPoint OnBoardDroneController::getGpsLocation()
+GeoPoint OnboardDroneController::getGpsLocation()
 {
     return pimpl_->getGpsLocation();
 }
 
-DroneControllerBase::LandedState OnBoardDroneController::getLandedState()
+DroneControllerBase::LandedState OnboardDroneController::getLandedState()
 {
     return pimpl_->getLandedState();
 }
 //administrative
 
-bool OnBoardDroneController::armDisarm(bool arm, CancelableBase& cancelable_action)
+bool OnboardDroneController::armDisarm(bool arm, CancelableBase& cancelable_action)
 {
     return pimpl_->armDisarm(arm, cancelable_action);
 }
 
 
-void OnBoardDroneController::enableApiControl(bool is_enabled)
+void OnboardDroneController::enableApiControl(bool is_enabled)
 {
     pimpl_->enableApiControl(is_enabled);
 }
-void OnBoardDroneController::setSimulationMode(bool is_set)
+void OnboardDroneController::setSimulationMode(bool is_set)
 {
     pimpl_->setSimulationMode(is_set);
 }
-bool OnBoardDroneController::isApiControlEnabled()
+bool OnboardDroneController::isApiControlEnabled()
 {
     return pimpl_->isApiControlEnabled();
 }
-bool OnBoardDroneController::isSimulationMode()
+bool OnboardDroneController::isSimulationMode()
 {
     return pimpl_->isSimulationMode();
 }
 
-bool OnBoardDroneController::takeoff(float max_wait_seconds, CancelableBase& cancelable_action)
+bool OnboardDroneController::takeoff(float max_wait_seconds, CancelableBase& cancelable_action)
 {
     return pimpl_->takeoff(max_wait_seconds, cancelable_action);
 }
 
-bool OnBoardDroneController::hover(CancelableBase& cancelable_action)
+bool OnboardDroneController::hover(CancelableBase& cancelable_action)
 {
     return pimpl_->hover(cancelable_action);
 }
 
-bool OnBoardDroneController::land(float max_wait_seconds, CancelableBase& cancelable_action)
+bool OnboardDroneController::land(float max_wait_seconds, CancelableBase& cancelable_action)
 {
     return pimpl_->land(max_wait_seconds, cancelable_action);
 }
 
-bool OnBoardDroneController::goHome(CancelableBase& cancelable_action)
+bool OnboardDroneController::goHome(CancelableBase& cancelable_action)
 {
     return pimpl_->goHome(cancelable_action);
 }
 
-void OnBoardDroneController::commandRollPitchZ(float pitch, float roll, float z, float yaw)
+void OnboardDroneController::commandRollPitchZ(float pitch, float roll, float z, float yaw)
 {
     return pimpl_->commandRollPitchZ(pitch, roll, z, yaw);
 }
-void OnBoardDroneController::commandVelocity(float vx, float vy, float vz, const YawMode& yaw_mode)
+void OnboardDroneController::commandVelocity(float vx, float vy, float vz, const YawMode& yaw_mode)
 {
     return pimpl_->commandVelocity(vx, vy, vz, yaw_mode);
 }
-void OnBoardDroneController::commandVelocityZ(float vx, float vy, float z, const YawMode& yaw_mode)
+void OnboardDroneController::commandVelocityZ(float vx, float vy, float z, const YawMode& yaw_mode)
 {
     return pimpl_->commandVelocityZ(vx, vy, z, yaw_mode);
 }
-void OnBoardDroneController::commandPosition(float x, float y, float z, const YawMode& yaw_mode)
+void OnboardDroneController::commandPosition(float x, float y, float z, const YawMode& yaw_mode)
 {
     return pimpl_->commandPosition(x, y, z, yaw_mode);
 }
 
-RCData OnBoardDroneController::getRCData()
+RCData OnboardDroneController::getRCData()
 {
     return pimpl_->getRCData();
 }
-void OnBoardDroneController::setRCData(const RCData& rcData)
+void OnboardDroneController::setRCData(const RCData& rcData)
 {
     return pimpl_->setRCData(rcData);
 }
 
-bool OnBoardDroneController::loopCommandPre()
+bool OnboardDroneController::loopCommandPre()
 {
     return pimpl_->loopCommandPre();
 }
 
-void OnBoardDroneController::loopCommandPost()
+void OnboardDroneController::loopCommandPost()
 {
     pimpl_->loopCommandPost();
 }
 
 //drone parameters
-float OnBoardDroneController::getCommandPeriod()
+float OnboardDroneController::getCommandPeriod()
 {
     return pimpl_->getCommandPeriod();
 }
-float OnBoardDroneController::getTakeoffZ()
+float OnboardDroneController::getTakeoffZ()
 {
     return pimpl_->getTakeoffZ();
 }
-float OnBoardDroneController::getDistanceAccuracy()
+float OnboardDroneController::getDistanceAccuracy()
 {
     return pimpl_->getDistanceAccuracy();
 }
-const VehicleParams& OnBoardDroneController::getVehicleParams()
+const VehicleParams& OnboardDroneController::getVehicleParams()
 {
     return pimpl_->getVehicleParams();
 }
 //TODO: decouple DroneControllerBase, VehicalParams and SafetyEval
 
-Pose OnBoardDroneController::getDebugPose()
+Pose OnboardDroneController::getDebugPose()
 {
     return pimpl_->getDebugPose();
 }

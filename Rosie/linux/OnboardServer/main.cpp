@@ -5,12 +5,13 @@
 #include "dji_control.hpp"
 #include "dji_status.hpp"
 
-#include "DroneControllerBase.hpp"
-#include <OnboardDroneController.hpp>
+#include "vehicles/multirotor/controllers/DroneControllerBase.hpp"
+#include "vehicles/multirotor/controllers/OnboardDroneController.hpp"
 
 using namespace DJI::OSDK;
 using namespace std;
 using namespace msr::airlib;
+using namespace Rosie::OnboardLib;
 
 void printUsage() {
     cout << "Usage: DroneServer" << endl;
