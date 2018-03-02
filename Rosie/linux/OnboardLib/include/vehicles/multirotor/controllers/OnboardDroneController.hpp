@@ -79,7 +79,7 @@ public:
     virtual ~OnboardDroneController();
 
     //non-base interface specific to OnboardDroneController
-    void initialize(const ConnectionInfo& connection_info, const SensorCollection* sensors, bool is_simulation, int argc, char* argv[]);
+    void initialize(const ConnectionInfo& connection_info, const SensorCollection* sensors, bool is_simulation, int argc, char** argv);
     ConnectionInfo getOnboardConnectionInfo();
     
     //TODO: get rid of below methods?
@@ -189,7 +189,7 @@ public:
     common_utils::Timer hil_message_timer_;
     common_utils::Timer sitl_message_timer_;
 
-    void initialize(const ConnectionInfo& connection_info, const SensorCollection* sensors, bool is_simulation, int argc, char* argv[])
+    void initialize(const ConnectionInfo& connection_info, const SensorCollection* sensors, bool is_simulation, int argc, char** argv)
     {
         connection_info_ = connection_info;
         sensors_ = sensors;
@@ -1204,7 +1204,7 @@ OnboardDroneController::~OnboardDroneController()
     pimpl_->closeAllConnection();
 }
 
-void OnboardDroneController::initialize(const ConnectionInfo& connection_info, const SensorCollection* sensors, bool is_simulation, int argc, char* argv[])
+void OnboardDroneController::initialize(const ConnectionInfo& connection_info, const SensorCollection* sensors, bool is_simulation, int argc, char** argv)
 {
     pimpl_->initialize(connection_info, sensors, is_simulation, argc, argv);
 }

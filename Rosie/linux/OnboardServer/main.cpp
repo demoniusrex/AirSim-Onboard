@@ -6,19 +6,22 @@
 #include "dji_status.hpp"
 
 #include "vehicles/multirotor/controllers/DroneControllerBase.hpp"
+#include "vehicles/multirotor/controllers/RealMultirotorConnector.hpp"
+#include "vehicles/multirotor/api/MultirotorRpcLibServer.hpp"
 #include "vehicles/multirotor/controllers/OnboardDroneController.hpp"
+#include "common/Settings.hpp"
+
 
 using namespace DJI::OSDK;
 using namespace std;
 using namespace msr::airlib;
 using namespace Rosie::OnboardLib;
-
 void printUsage() {
     cout << "Usage: DroneServer" << endl;
     cout << "Start the DroneServer using the 'PX4' settings in ~/Documents/AirSim/settings.json." << endl;
 }
 
-int main(int argc, const char* argv[])
+int main(int argc, char** argv)
 {
     if (argc != 2) {
         std::cout << "Usage: " << argv[0] << " is_simulation" << std::endl;
@@ -39,6 +42,8 @@ int main(int argc, const char* argv[])
 
 
     OnboardDroneController::ConnectionInfo connection_info;
+    std::string host_ip = "127.0.0.1";
+    int host_port = 10108;
     
     // read settings and override defaults
     auto settings_full_filepath = Settings::getUserDirectoryFullPath("settings.json");
@@ -52,12 +57,13 @@ int main(int argc, const char* argv[])
         connection_info.ip_port = child.getInt("UdpPort", connection_info.ip_port);
         connection_info.serial_port = child.getString("SerialPort", connection_info.serial_port);
         connection_info.baud_rate = child.getInt("SerialBaudRate", connection_info.baud_rate);
+        host_ip = child.getString("HostIp", host_ip);
+        host_port = child.getInt("HostPort", host_port);
 
     }
     else {
         std::cout << "Could not load settings from " << Settings::singleton().getFullFilePath() << std::endl;
         return 3;
-
     }
 
     OnboardDroneController onboard_drone;
@@ -67,7 +73,7 @@ int main(int argc, const char* argv[])
     RealMultirotorConnector connector(& onboard_drone);
 
     MultirotorApi server_wrapper(& connector);
-    msr::airlib::MultirotorRpcLibServer server(&server_wrapper, connection_info.local_host_ip);
+    msr::airlib::MultirotorRpcLibServer server(&server_wrapper, host_ip, host_port);
     
     //start server in async mode
     server.start(false);
