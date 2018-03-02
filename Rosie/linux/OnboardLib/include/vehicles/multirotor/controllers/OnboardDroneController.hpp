@@ -40,6 +40,9 @@ using namespace DJI::OSDK;
 using namespace std;
 using namespace msr::airlib;
 
+#define C_EARTH (double)6378137.0
+#define DEG2RAD 0.01745329252
+
 namespace Rosie { namespace OnboardLib {
 
 class OnBoardDroneController : public DroneControllerBase
@@ -173,6 +176,8 @@ public:
     std::shared_ptr<Vehicle> onboard_vehicle_;
     int state_version_;
     int current_state;
+    
+    Telemetry::TypeMap<Telemetry::TOPIC_GPS_FUSED>::type originGPS;
     float target_height_;
     bool is_api_control_enabled_;
     bool is_simulation_mode_;
@@ -233,21 +238,80 @@ public:
             is_any_heartbeat_ = false;
             is_armed_ = false;
             is_controls_0_1_ = true;
-            Utils::setValue(rotor_controls_, 0.0f);
-            //TODO: main_node_->setMessageInterval(...);
-            // connection_->subscribe([=](std::shared_ptr<mavlinkcom::MavLinkConnection> connection, const mavlinkcom::MavLinkMessage& msg) {
-            //     unused(connection);
-            //     processMavMessages(msg);
-            // });
+            char func[50]; 
+            int pkgIndex;
 
-            // listen to the other mavlink connection also
-            // auto mavcon = onboard_vehicle_->getConnection();
-            // if (mavcon != connection_) {
-            //     mavcon->subscribe([=](std::shared_ptr<mavlinkcom::MavLinkConnection> connection, const mavlinkcom::MavLinkMessage& msg) {
-            //         unused(connection);
-            //         processMavMessages(msg);
-            //     });
-            // }
+
+            Utils::setValue(rotor_controls_, 0.0f);
+ 
+            // Telemetry: Verify the subscription
+            ACK::ErrorCode subscribeStatus;
+            subscribeStatus = onboard_vehicle_->subscribe->verify(1000);
+            if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
+            {
+                ACK::getErrorCodeMessage(subscribeStatus, func);
+                throw std::runtime_error("Error verifying flight controller data");
+            }
+
+
+            {
+                // Telemetry: Subscribe to flight status and mode at freq 10 Hz
+                pkgIndex                  = 0;
+                int       freq            = 10;
+                Telemetry::TopicName topicList10Hz[] = { Telemetry::TOPIC_STATUS_FLIGHT,
+                                                Telemetry::TOPIC_STATUS_DISPLAYMODE };
+                int  numTopic        = sizeof(topicList10Hz) / sizeof(topicList10Hz[0]);
+                bool enableTimestamp = false;
+
+                bool pkgStatus = onboard_vehicle_->subscribe->initPackageFromTopicList(
+                    pkgIndex, numTopic, topicList10Hz, enableTimestamp, freq);
+                if (!(pkgStatus))
+                {
+                    throw std::runtime_error("Error initializing 10Hz flight controller subscription package");
+                }
+                subscribeStatus = onboard_vehicle_->subscribe->startPackage(pkgIndex, 1000);
+                if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
+                {
+                    ACK::getErrorCodeMessage(subscribeStatus, func);
+                    // Cleanup before return
+                    onboard_vehicle_->subscribe->removePackage(pkgIndex, 1000);
+                    throw std::runtime_error(func);
+                }
+            }
+            {
+                // Telemetry: Subscribe to quaternion, fused lat/lon and altitude at freq 50
+                // Hz
+                pkgIndex                  = 1;
+                int       freq            = 50;
+                Telemetry::TopicName topicList50Hz[] = 
+                { 
+                    Telemetry::TOPIC_QUATERNION, 
+                    Telemetry::TOPIC_GPS_FUSED, 
+                    Telemetry::TOPIC_VELOCITY,  
+                    Telemetry::TOPIC_ANGULAR_RATE_FUSIONED, 
+                    Telemetry::TOPIC_ACCELERATION_GROUND, 
+                    Telemetry::TOPIC_ACCELERATION_BODY
+                };
+                int       numTopic = sizeof(topicList50Hz) / sizeof(topicList50Hz[0]);
+                bool      enableTimestamp = false;
+
+                bool pkgStatus = onboard_vehicle_->subscribe->initPackageFromTopicList(
+                    pkgIndex, numTopic, topicList50Hz, enableTimestamp, freq);
+                if (!(pkgStatus))
+                {
+                    throw std::runtime_error("Error initializing 50Hz flight controller subscription package");
+                }
+                subscribeStatus =
+                    onboard_vehicle_->subscribe->startPackage(pkgIndex, 1000);
+                if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
+                {
+                    ACK::getErrorCodeMessage(subscribeStatus, func);
+                    // Cleanup before return
+                    onboard_vehicle_->subscribe->removePackage(pkgIndex, 1000);
+                    throw std::runtime_error(func);
+                }
+            }            
+
         }
     }
 
@@ -357,73 +421,6 @@ public:
         status_messages_.push(message);
     }
 
-    // void processMavMessages(const mavlinkcom::MavLinkMessage& msg)
-    // {
-    //     if (msg.msgid == HeartbeatMessage.msgid) {
-    //         std::lock_guard<std::mutex> guard_heartbeat(heartbeat_mutex_);
-
-    //         //TODO: have MavLinkNode track armed state so we don't have to re-decode message here again
-    //         HeartbeatMessage.decode(msg);
-    //         bool armed = (HeartbeatMessage.base_mode & static_cast<uint8_t>(mavlinkcom::MAV_MODE_FLAG::MAV_MODE_FLAG_SAFETY_ARMED)) > 0;
-    //         setArmed(armed);
-    //         if (!is_any_heartbeat_) {
-    //             is_any_heartbeat_ = true;
-    //             if (HeartbeatMessage.autopilot == static_cast<uint8_t>(mavlinkcom::MAV_AUTOPILOT::MAV_AUTOPILOT_PX4) &&
-    //                 HeartbeatMessage.type == static_cast<uint8_t>(mavlinkcom::MAV_TYPE::MAV_TYPE_FIXED_WING)) {
-    //                 // PX4 will scale fixed wing servo outputs to -1 to 1
-    //                 // and it scales multi rotor servo outpus to 0 to 1.
-    //                 is_controls_0_1_ = false;
-    //             }
-    //         } else if (is_simulation_mode_ && !is_hil_mode_set_) {
-    //             setHILMode();
-    //         }
-    //     } else if (msg.msgid == StatusTextMessage.msgid) {
-    //         StatusTextMessage.decode(msg);
-    //         //lock is established by below method
-    //         addStatusMessage(std::string(StatusTextMessage.text));
-    //     } else if (msg.msgid == CommandLongMessage.msgid) {
-    //         CommandLongMessage.decode(msg);
-    //         if (CommandLongMessage.command == static_cast<int>(mavlinkcom::MAV_CMD::MAV_CMD_SET_MESSAGE_INTERVAL)) {
-    //             int msg_id = static_cast<int>(CommandLongMessage.param1 + 0.5);
-    //             if (msg_id == 115) { //HIL_STATE_QUATERNION
-    //                 hil_state_freq_ = static_cast<int>(CommandLongMessage.param2 + 0.5);
-    //             }
-    //         }
-    //     } else if (msg.msgid == HilControlsMessage.msgid) {
-    //         if (!actuators_message_supported_) {
-    //             std::lock_guard<std::mutex> guard_controls(hil_controls_mutex_);
-
-    //             HilControlsMessage.decode(msg);
-    //             //is_arned_ = (HilControlsMessage.mode & 128) > 0; //TODO: is this needed?
-    //             rotor_controls_[0] = HilControlsMessage.roll_ailerons;
-    //             rotor_controls_[1] = HilControlsMessage.pitch_elevator;
-    //             rotor_controls_[2] = HilControlsMessage.yaw_rudder;
-    //             rotor_controls_[3] = HilControlsMessage.throttle;
-    //             rotor_controls_[4] = HilControlsMessage.aux1;
-    //             rotor_controls_[5] = HilControlsMessage.aux2;
-    //             rotor_controls_[6] = HilControlsMessage.aux3;
-    //             rotor_controls_[7] = HilControlsMessage.aux4;
-
-    //             normalizeRotorControls();
-    //         }
-    //     }
-    //     else if (msg.msgid == HilActuatorControlsMessage.msgid) {
-    //         actuators_message_supported_ = true;
-
-    //         std::lock_guard<std::mutex> guard_actuator(hil_controls_mutex_);    //use same mutex as HIL_CONTROl
-
-    //         HilActuatorControlsMessage.decode(msg);
-    //         //is_arned_ = (HilControlsMessage.mode & 128) > 0; //TODO: is this needed?
-    //         for (auto i = 0; i < 8; ++i) {
-    //             rotor_controls_[i] = HilActuatorControlsMessage.controls[i];
-    //         }
-    //         normalizeRotorControls();
-    //     }
-    //     //else ignore message
-    // }
-
-   
-
     real_T getVertexControlSignal(unsigned int rotor_index)
     {
         if (!is_simulation_mode_)
@@ -459,6 +456,8 @@ public:
         was_reset_ = true;
         setNormalMode();
     }
+    
+    
 
     const ImuBase* getImu()
     {
@@ -557,7 +556,6 @@ public:
     {
         close(); //just in case if connections were open
         resetState(); //reset all variables we might have changed during last session
-
         connect();
 
     }
@@ -565,6 +563,7 @@ public:
     {
         close();
     }
+
     //*** End: VehicleControllerBase implementation ***//
 
     bool hasVideoRequest()
@@ -595,7 +594,6 @@ public:
 
     void close()
     {
-        
         // if (video_server_ != nullptr)
         //     video_server_->close();
 
@@ -620,108 +618,44 @@ public:
         }
     }
 
-    /*
-        struct GlobalPosition {
-            float lat = 0, lon = 0, alt = 0; 
-        };
-        struct Vector3 {
-            float x = 0, y = 0, z = 0; // in NED (north, east, down) coordinates
-        };
-        struct LocalPose {
-            Vector3 pos;  // in NEU (north, east, down) coordinates
-            float q[4] = { 0 }; //qauternion
-        };
-
-        struct AttitudeState {
-            float roll = 0, pitch = 0, yaw = 0, roll_rate = 0, yaw_rate = 0, pitch_rate = 0;
-            uint64_t updated_on = 0;
-        } attitude;
-
-        struct GlobalState {
-            GlobalPosition pos;
-            Vector3 vel;
-            int alt_ground = 0;
-            float heading = 0;
-            uint64_t updated_on = 0;
-        } global_est;
-
-        struct RCState {
-            int16_t rc_channels_scaled[16] = { 0 };
-            unsigned char rc_channels_count = 0;
-            unsigned char rc_signal_strength = 0;
-            uint64_t updated_on = 0;
-        } rc;
-
-        struct ServoState {
-            unsigned int servo_raw[8] = { 0 };
-            unsigned char servo_port = 0;
-            uint64_t updated_on = 0;
-        } servo;
-
-        struct ControlState {
-            float actuator_controls[16] = { 0 };
-            unsigned char actuator_mode = 0, actuator_nav_mode = 0;
-            bool landed = 0;
-            bool armed = false;
-            bool offboard = false;
-            uint64_t updated_on = 0;
-        } controls;
-
-        struct LocalState {
-            Vector3 pos; // in NEU (north, east, up) coordinates (positive Z goes upwards).
-            Vector3 lin_vel;
-            Vector3 acc;
-            uint64_t updated_on;
-        } local_est;
-
-        struct MocapState {
-            LocalPose pose;
-            uint64_t updated_on = 0;
-        } mocap;
-
-        struct AltitudeState {
-            uint64_t updated_on = 0;
-            float altitude_monotonic = 0, altitude_amsl = 0, altitude_terrain = 0;
-            float altitude_local = 0, altitude_relative = 0, bottom_clearance = 0;
-        } altitude;
-
-        struct VfrHud {
-            float true_airspeed = 0; // in m/s
-            float groundspeed = 0; // in m/s
-            float altitude = 0; // MSL altitude in meters
-            float climb_rate = 0; // in m/s
-            int16_t heading = 0; // in degrees w.r.t. north
-            uint16_t throttle = 0; // in percent, 0 to 100
-        } vfrhud;
-
-        struct HomeState {
-            GlobalPosition global_pos;
-            LocalPose local_pose;
-            Vector3 approach; // in NEU (north, east, up) coordinates (positive Z goes upwards).
-            bool is_set = false;
-        } home;
-
-        struct Stats {	//mainly for debugging purposes
-            int last_read_msg_id = 0;
-            uint64_t last_read_msg_time = 0;
-            int last_write_msg_id = 0;
-            uint64_t last_write_msg_time = 0;
-            std::string debug_msg;
-        } stats;
-
-
-    */
     
     Kinematics::State getKinematicsEstimated()
     {
         updateState();
         Kinematics::State state;
-        //TODO: reduce code duplication below?
-        state.pose.position = Vector3r(current_state.local_est.pos.x, current_state.local_est.pos.y, current_state.local_est.pos.z);
-        state.pose.orientation = VectorMath::toQuaternion(current_state.attitude.pitch, current_state.attitude.roll, current_state.attitude.yaw);
-        state.twist.linear = Vector3r(current_state.local_est.lin_vel.x, current_state.local_est.lin_vel.y, current_state.local_est.lin_vel.z);
-        state.twist.angular = Vector3r(current_state.attitude.roll_rate, current_state.attitude.pitch_rate, current_state.attitude.yaw_rate);
-        state.pose.position = Vector3r(current_state.local_est.acc.x, current_state.local_est.acc.y, current_state.local_est.acc.z);
+        
+        Vector3r deltaNed;
+
+        double                     deltaLon;
+        double                     deltaLat;
+        Telemetry::TypeMap<Telemetry::TOPIC_GPS_FUSED>::type currentSubscriptionGPS;
+        Telemetry::TypeMap<Telemetry::TOPIC_VELOCITY>::type currentVelocity;
+        Telemetry::TypeMap<Telemetry::TOPIC_QUATERNION>::type currentOrientation;
+        Telemetry::TypeMap<Telemetry::TOPIC_ANGULAR_RATE_FUSIONED>::type currentAngularRate;
+        Telemetry::TypeMap<Telemetry::TOPIC_ACCELERATION_GROUND>::type currentAccelerationGround;
+        Telemetry::TypeMap<Telemetry::TOPIC_ACCELERATION_BODY>::type currentAccelerationBody;
+
+        currentSubscriptionGPS = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_GPS_FUSED>();
+        currentVelocity = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_VELOCITY>();
+        currentOrientation = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_QUATERNION>();
+        Telemetry::Vector3f eulerOrientation = toEulerAngle((static_cast<void*>(&currentOrientation)));
+        currentAngularRate = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_ANGULAR_RATE_FUSIONED>();
+        currentAccelerationGround = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_ACCELERATION_GROUND>();
+        currentAccelerationBody = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_ACCELERATION_BODY>();
+
+        deltaLon   = currentSubscriptionGPS.longitude - originGPS.longitude;
+        deltaLat   = currentSubscriptionGPS.latitude - originGPS.latitude;
+        deltaNed.x = deltaLat * C_EARTH;
+        deltaNed.y = deltaLon * C_EARTH * cos(currentSubscriptionGPS.latitude);
+        deltaNed.z = currentSubscriptionGPS.altitude - originGPS.altitude;
+        
+        state.pose.position = deltaNed;
+        state.pose.orientation = VectorMath::toQuaternion(eulerOrientation.x, eulerOrientation.y, eulerOrientation.z);
+        state.twist.linear = Vector3r(currentVelocity.data.x, currentVelocity.data.y, currentVelocity.data.z);
+        state.twist.angular = Vector3r(currentAngularRate.x, currentAngularRate.y, currentAngularRate.z);
+        state.accelerations.linear = Vector3r(currentAccelerationGround.x, currentAccelerationGround.y, currentAccelerationGround.z);
+        state.accelerations.angular = Vector3r(currentAccelerationBody.x, currentAccelerationBody.y, currentAccelerationBody.z);
+
         //TODO: how do we get angular acceleration?
         return state;
     }
@@ -729,41 +663,58 @@ public:
     Vector3r getPosition()
     {
         updateState();
-        return Vector3r(current_state.local_est.pos.x, current_state.local_est.pos.y, current_state.local_est.pos.z);
+        Vector3r deltaNed;
+        double deltaLon;
+        double deltaLat;
+        Telemetry::TypeMap<Telemetry::TOPIC_GPS_FUSED>::type currentSubscriptionGPS;
+
+        currentSubscriptionGPS = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_GPS_FUSED>();
+
+        deltaLon   = currentSubscriptionGPS.longitude - originGPS.longitude;
+        deltaLat   = currentSubscriptionGPS.latitude - originGPS.latitude;
+        deltaNed.x = deltaLat * C_EARTH;
+        deltaNed.y = deltaLon * C_EARTH * cos(currentSubscriptionGPS.latitude);
+        deltaNed.z = currentSubscriptionGPS.altitude - originGPS.altitude;
+        
+        return deltaNed;
     }
 
     Vector3r getVelocity()
     {
         updateState();
-        return Vector3r(current_state.local_est.lin_vel.x, current_state.local_est.lin_vel.y, current_state.local_est.lin_vel.z);
+        Telemetry::TypeMap<Telemetry::TOPIC_VELOCITY>::type currentVelocity;
+        currentVelocity = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_VELOCITY>();
+        return Vector3r(currentVelocity.data.x, currentVelocity.data.y, currentVelocity.data.z);
     }
 
     Quaternionr getOrientation()
     {
         updateState();
-        return VectorMath::toQuaternion(current_state.attitude.pitch, current_state.attitude.roll, current_state.attitude.yaw);
+        Telemetry::TypeMap<Telemetry::TOPIC_QUATERNION>::type currentOrientation;
+        currentOrientation = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_QUATERNION>();
+        Telemetry::Vector3f euler = toEulerAngle((static_cast<void*>(&currentOrientation)));
+        return VectorMath::toQuaternion(euler.x, euler.y, euler.z);
     }
 
     GeoPoint getHomeGeoPoint()
     {
         updateState();
-        if (current_state.home.is_set)
-            return GeoPoint(current_state.home.global_pos.lat, current_state.home.global_pos.lon, current_state.home.global_pos.alt);
-        else
-            return GeoPoint(Utils::nan<double>(), Utils::nan<double>(), Utils::nan<float>());
+        return GeoPoint(Utils::nan<double>(), Utils::nan<double>(), Utils::nan<float>());
     }
 
     GeoPoint getGpsLocation()
     {
         updateState();
-        return GeoPoint(current_state.global_est.pos.lat, current_state.global_est.pos.lon, current_state.global_est.pos.alt);
+        Telemetry::TypeMap<Telemetry::TOPIC_GPS_FUSED>::type currentSubscriptionGPS;
+        currentSubscriptionGPS = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_GPS_FUSED>();
+    
+        return GeoPoint(currentSubscriptionGPS.latitude, currentSubscriptionGPS.longitude, currentSubscriptionGPS.altitude);
     }
-
 
     LandedState getLandedState()
     {
         updateState();
-        return current_state.controls.landed ? LandedState::Landed : LandedState::Flying;
+        return current_state == VehicleStatus::FlightStatus::IN_AIR ? LandedState::Flying : LandedState::Landed;
     }
 
     //administrative
@@ -798,11 +749,11 @@ public:
     {
         checkVehicle();
         if (is_enabled) {
-            onboard_vehicle_->obtainCtrlAuthority(1000);
+            // onboard_vehicle_->obtainCtrlAuthority(1000);
             is_api_control_enabled_ = true;
         }
         else {
-            onboard_vehicle_->releaseCtrlAuthority(1000);
+            // onboard_vehicle_->releaseCtrlAuthority(1000);
             is_api_control_enabled_ = false;
         }
     }
@@ -1196,7 +1147,6 @@ public:
     void endOffboardMode()
     {
         onboard_vehicle_->releaseCtrlAuthority();
-        
         ensureSafeMode();
     }
 
@@ -1225,9 +1175,35 @@ public:
             throw std::logic_error("Cannot perform operation when no vehicle is connected");
         }
     }
+
+    Telemetry::Vector3f toEulerAngle(void* quaternionData)
+    {
+        Telemetry::Vector3f    ans;
+        Telemetry::Quaternion* quaternion = (Telemetry::Quaternion*)quaternionData;
+
+        double q2sqr = quaternion->q2 * quaternion->q2;
+        double t0    = -2.0 * (q2sqr + quaternion->q3 * quaternion->q3) + 1.0;
+        double t1 =
+            +2.0 * (quaternion->q1 * quaternion->q2 + quaternion->q0 * quaternion->q3);
+        double t2 =
+            -2.0 * (quaternion->q1 * quaternion->q3 - quaternion->q0 * quaternion->q2);
+        double t3 =
+            +2.0 * (quaternion->q2 * quaternion->q3 + quaternion->q0 * quaternion->q1);
+        double t4 = -2.0 * (quaternion->q1 * quaternion->q1 + q2sqr) + 1.0;
+
+        t2 = (t2 > 1.0) ? 1.0 : t2;
+        t2 = (t2 < -1.0) ? -1.0 : t2;
+
+        ans.x = asin(t2);
+        ans.y = atan2(t3, t4);
+        ans.z = atan2(t1, t0);
+
+        return ans;
+    }
+
 }; //impl
 
-   //empty constructor required for pimpl
+//empty constructor required for pimpl
 OnBoardDroneController::OnBoardDroneController()
 {
     pimpl_.reset(new impl(this));
