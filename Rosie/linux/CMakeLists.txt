@@ -9,4 +9,5 @@ if(NOT ROSIE_AIRSIM_SOURCE)
     set(ROSIE_AIRSIM_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/../../AirSim")
 endif()
 
+add_subdirectory(OnboardLib)
 add_subdirectory(OnboardServer)
