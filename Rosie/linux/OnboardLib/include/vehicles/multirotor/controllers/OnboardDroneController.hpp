@@ -36,6 +36,8 @@
 #include "dji_telemetry.hpp"
 #include "dji_vehicle.hpp"
 
+#include <dji_linux_helpers.hpp>
+
 using namespace DJI::OSDK;
 using namespace std;
 using namespace msr::airlib;
@@ -156,6 +158,8 @@ public:
     {
     }
 
+    LinuxSetup* linuxEnvironment = nullptr;
+
     //variables required for VehicleControllerBase implementation
     ConnectionInfo connection_info_;
     bool is_any_heartbeat_, is_armed_;
@@ -185,13 +189,14 @@ public:
     common_utils::Timer hil_message_timer_;
     common_utils::Timer sitl_message_timer_;
 
-    void initialize(const ConnectionInfo& connection_info, const SensorCollection* sensors, bool is_simulation)
+    void initialize(const ConnectionInfo& connection_info, const SensorCollection* sensors, bool is_simulation, int argc, const char* argv[])
     {
         connection_info_ = connection_info;
         sensors_ = sensors;
         is_simulation_mode_ = is_simulation;
 
         try {
+            linuxEnvironment = new LinuxSetup(argc, argv);
             openAllConnections();
             is_available_ = true;
         }
@@ -241,7 +246,6 @@ public:
             char func[50]; 
             int pkgIndex;
 
-
             Utils::setValue(rotor_controls_, 0.0f);
  
             // Telemetry: Verify the subscription
@@ -252,7 +256,6 @@ public:
                 ACK::getErrorCodeMessage(subscribeStatus, func);
                 throw std::runtime_error("Error verifying flight controller data");
             }
-
 
             {
                 // Telemetry: Subscribe to flight status and mode at freq 10 Hz
@@ -372,15 +375,11 @@ public:
         }
 
         addStatusMessage(Utils::stringf("Connecting to Onboard flight controller over serial port: %s, baud rate %d ....", port_name_auto.c_str(), baud_rate));
-        // connection_ = mavlinkcom::MavLinkConnection::connectSerial("hil", port_name_auto, baud_rate);
-        // connection_->ignoreMessage(mavlinkcom::MavLinkAttPosMocap::kMessageId); //TODO: find better way to communicate debug pose instead of using fake Mocap messages
-        // hil_node_ = std::make_shared<mavlinkcom::MavLinkNode>(connection_info_.sim_sysid, connection_info_.sim_compid);
-        // hil_node_->connect(connection_);
+                
+        onboard_vehicle_ = linuxEnvironment->getVehicle();   
+        
         addStatusMessage("Connected to Onboard flight controller over serial port.");
 
-        onboard_vehicle_ = std::make_shared<Vehicle>();
-        // onboard_vehicle_->connect(connection_); // in this case we can use the same connection.
-        // onboard_vehicle_->startHeartbeat();
     }
 
     // mavlinkcom::MavLinkHilSensor getLastSensorMessage()
@@ -1214,7 +1213,7 @@ OnBoardDroneController::~OnBoardDroneController()
     pimpl_->closeAllConnection();
 }
 
-void OnBoardDroneController::initialize(const ConnectionInfo& connection_info, const SensorCollection* sensors, bool is_simulation)
+void OnBoardDroneController::initialize(const ConnectionInfo& connection_info, const SensorCollection* sensors, bool is_simulation, int argc, const char* argv[])
 {
     pimpl_->initialize(connection_info, sensors, is_simulation);
 }

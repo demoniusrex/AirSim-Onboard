@@ -6,6 +6,7 @@
 #include "dji_status.hpp"
 
 #include "DroneControllerBase.hpp"
+#include <OnboardDroneController.hpp>
 
 using namespace DJI::OSDK;
 using namespace std;
@@ -59,7 +60,7 @@ int main(int argc, const char* argv[])
     }
 
     OnboardDroneController onboard_drone;
-    onboard_drone.initialize(connection_info, nullptr, is_simulation);
+    onboard_drone.initialize(connection_info, nullptr, is_simulation, argc, argv);
     onboard_drone.reset();
 
     RealMultirotorConnector connector(& onboard_drone);
