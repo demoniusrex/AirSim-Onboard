@@ -354,7 +354,7 @@ public:
         // hil_node_->connect(connection_);
         addStatusMessage(std::string("Connected to Onboard flight controller over UDP."));
 
-        onboard_vehicle_ = std::make_shared<Vehicle>();
+        onboard_vehicle_ = std::make_shared<Vehicle>(linuxEnvironment->getVehicle()); 
 
         // onboard_vehicle_->connect(connection_);
         // onboard_vehicle_->startHeartbeat();
@@ -1114,6 +1114,13 @@ public:
         return vehicle_params_; //defaults are good for DJI Matrice 100
     }
 
+    void reportTelemetry(float renderTime)
+    {
+        if (onboard_vehicle_ == nullptr) {
+            return;
+        }
+    }
+
     Pose getDebugPose()
     {
         std::lock_guard<std::mutex> guard(mocap_pose_mutex_);
@@ -1389,6 +1396,11 @@ const VehicleParams& OnboardDroneController::getVehicleParams()
     return pimpl_->getVehicleParams();
 }
 //TODO: decouple DroneControllerBase, VehicalParams and SafetyEval
+
+void OnboardDroneController::reportTelemetry(float renderTime)
+{
+    return pimpl_->reportTelemetry(renderTime);
+}
 
 Pose OnboardDroneController::getDebugPose()
 {
