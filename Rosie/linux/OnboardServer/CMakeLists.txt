@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.5.0)
 project(OnboardServer)
-
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -pthread -g -O0")
+cmake_policy(SET CMP0022 NEW)
 
 LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/../../../AirSim/cmake/cmake-modules") 
 INCLUDE("${CMAKE_CURRENT_LIST_DIR}/../../../AirSim/cmake/cmake-modules/CommonSetup.cmake")
-CommonSetup()
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -pthread -g -O0")
 
 IncludeEigen()
 
@@ -31,10 +31,11 @@ FILE(GLOB SOURCE_FILES *.hpp *.cpp
 
 add_executable(${PROJECT_NAME} ${SOURCE_FILES})
 
-target_link_libraries(${PROJECT_NAME} LINK_PUBLIC AirLib)
-target_link_libraries(${PROJECT_NAME} LINK_PUBLIC MavLinkCom)
-target_link_libraries(${PROJECT_NAME} LINK_PUBLIC ${RPC_LIB})
-target_link_libraries(${PROJECT_NAME} LINK_PUBLIC djiosdk-core)
+CommonTargetLink()
+target_link_libraries(${PROJECT_NAME} djiosdk-core)
+target_link_libraries(${PROJECT_NAME} ${RPC_LIB})
+target_link_libraries(${PROJECT_NAME} AirLib)
+target_link_libraries(${PROJECT_NAME} MavLinkCom)
 
 
 
