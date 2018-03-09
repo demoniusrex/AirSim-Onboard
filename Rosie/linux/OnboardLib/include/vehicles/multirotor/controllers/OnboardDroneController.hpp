@@ -590,7 +590,7 @@ public:
             {
                 return;
             }
-            
+
             // call emergency brake
             onboard_vehicle_->control->emergencyBrake();
         }
@@ -763,13 +763,11 @@ public:
         unused(cancelable_action);
         checkVehicle();
 
-        bool rc = false;
         auto vec = getPosition();
         float z = vec.z() + getTakeoffZ();
         int  timeout = 1000;
 
         char func[50];
-        int  pkgIndex;
 
         // Telemetry: Verify the subscription
         ACK::ErrorCode subscribeStatus;
@@ -902,7 +900,6 @@ public:
     bool land(float max_wait_seconds, CancelableBase& cancelable_action)
     {
         char func[50];
-        int  pkgIndex;
 
         unused(cancelable_action);
         // bugbug: really need a downward pointing distance to ground sensor to do this properly, for now
@@ -1066,13 +1063,13 @@ public:
     void commandVelocityZ(float vx, float vy, float z, const YawMode& yaw_mode)
     {
         checkVehicle();
-        float yaw = yaw_mode.yaw_or_rate * M_PIf / 180;
+        //float yaw = yaw_mode.yaw_or_rate * M_PIf / 180;
         //onboard_vehicle_->moveByLocalVelocityWithAltHold(vx, vy, z, !yaw_mode.is_rate, yaw);
     }
     void commandPosition(float x, float y, float z, const YawMode& yaw_mode)
     {
         checkVehicle();
-        float yaw = yaw_mode.yaw_or_rate * M_PIf / 180;
+        //float yaw = yaw_mode.yaw_or_rate * M_PIf / 180;
         //onboard_vehicle_->moveToLocalPosition(x, y, z, !yaw_mode.is_rate, yaw);
     }
 
