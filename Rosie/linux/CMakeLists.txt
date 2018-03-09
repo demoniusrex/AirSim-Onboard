@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.5.0)
 project(rosie-linux)
 
+set(CMAKE_VERBOSE_MAKEFILE ON)
+
 if(NOT ROSIE_ONBOARDSDK_SOURCE)
     set(ROSIE_ONBOARDSDK_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/../../Onboard-SDK/osdk-core")
 endif()

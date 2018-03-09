@@ -427,7 +427,7 @@ public:
 
         // std::lock_guard<std::mutex> guard(hil_controls_mutex_);
         //return rotor_controls_[rotor_index];
-        return NULL;
+        return 0;
     }
 
     void resetState()
@@ -488,9 +488,9 @@ public:
         }
 
         //send sensor updates
-        const auto& imu_output = getImu()->getOutput();
-        const auto& mag_output = getMagnetometer()->getOutput();
-        const auto& baro_output = getBarometer()->getOutput();
+        // const auto& imu_output = getImu()->getOutput();
+        // const auto& mag_output = getMagnetometer()->getOutput();
+        // const auto& baro_output = getBarometer()->getOutput();
 
         // sendHILSensor(imu_output.linear_acceleration,
         //     imu_output.angular_velocity,
@@ -574,7 +574,7 @@ public:
 
     void sendImage(unsigned char data[], uint32_t length, uint16_t width, uint16_t height)
     {
-        const int MAVLINK_DATA_STREAM_IMG_PNG = 6;
+        // const int MAVLINK_DATA_STREAM_IMG_PNG = 6;
         // video_server_->sendFrame(data, length, width, height, MAVLINK_DATA_STREAM_IMG_PNG, 0);
     }
 
@@ -585,6 +585,11 @@ public:
             // remove MAV_MODE_FLAG_HIL_ENABLED flag from current mode 
             std::lock_guard<std::mutex> guard(set_mode_mutex_);
             int mode = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>();
+            
+            if (mode != VehicleStatus::FlightStatus::IN_AIR)
+            {
+                return;
+            }
             
             // call emergency brake
             onboard_vehicle_->control->emergencyBrake();

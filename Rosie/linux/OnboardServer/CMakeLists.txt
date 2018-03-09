@@ -5,7 +5,7 @@ cmake_policy(SET CMP0022 NEW)
 LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/../../../AirSim/cmake/cmake-modules") 
 INCLUDE("${CMAKE_CURRENT_LIST_DIR}/../../../AirSim/cmake/cmake-modules/CommonSetup.cmake")
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -pthread -g -O0")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++11 -pthread -g -O0")
 
 IncludeEigen()
 
