@@ -177,7 +177,7 @@ public:
 
     //additional variables required for DroneControllerBase implementation
     //this is optional for methods that might not use vehicle commands
-    std::shared_ptr<Vehicle> onboard_vehicle_;
+    Vehicle* onboard_vehicle_;
     int state_version_;
     int current_state;
     
@@ -196,8 +196,22 @@ public:
         is_simulation_mode_ = is_simulation;
 
         try {
+            
+            std::cout << "Initialize Linux environment" << "\n";
             linuxEnvironment = new LinuxSetup(argc, argv);
-            openAllConnections();
+            if (linuxEnvironment == NULL)
+            {
+                throw std::runtime_error("Error initializing Linux environment");
+            }
+            std::cout << "Connect to flight controller" << "\n";
+            
+            onboard_vehicle_ = linuxEnvironment->getVehicle();
+
+            //connectToVideoServer();
+
+            initializeOnboardSubscriptions();
+            setOrigin();
+            
             is_available_ = true;
         }
         catch (std::exception& ex) {
@@ -237,17 +251,26 @@ public:
         }
     }
 
+    void setOrigin()
+    {
+        if (onboard_vehicle_ != nullptr) 
+        {
+            // set origin point
+            originGPS = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_GPS_FUSED>();
+            std::cout << "Set origin point" << "\n";
+        }
+    }
+
     void initializeOnboardSubscriptions()
     {
         if (onboard_vehicle_ != nullptr) {
+            std::cout << "Initialize flight controller subscriptions..." << "\n";
             is_any_heartbeat_ = false;
             is_armed_ = false;
             is_controls_0_1_ = true;
             char func[50]; 
             int pkgIndex;
-
-            Utils::setValue(rotor_controls_, 0.0f);
- 
+            Utils::setValue(rotor_controls_, 0.0f); 
             // Telemetry: Verify the subscription
             ACK::ErrorCode subscribeStatus;
             subscribeStatus = onboard_vehicle_->subscribe->verify(1000);
@@ -313,73 +336,9 @@ public:
                     onboard_vehicle_->subscribe->removePackage(pkgIndex, 1000);
                     throw std::runtime_error(func);
                 }
-            }            
-
+            }
+            std::cout << "Started flight controller subscriptions" << "\n";
         }
-    }
-
-    void connect()
-    {
-        createOnboardConnection(connection_info_);
-        initializeOnboardSubscriptions();
-    }
-
-    void createOnboardConnection(const ConnectionInfo& connection_info)
-    {
-        if (connection_info.use_serial) {
-            createOnboardSerialConnection(connection_info.serial_port, connection_info.baud_rate);
-        }
-        else {
-            createOnboardUdpConnection(connection_info.ip_address, connection_info.ip_port);
-        }
-        //Uncomment below for sending images over MavLink
-        //connectToVideoServer();
-    }
-
-    void createOnboardUdpConnection(const std::string& ip, int port)
-    {
-        close();
-
-        if (ip == "") {
-            throw std::invalid_argument("UdpIp setting for Onboard flight controller is invalid.");
-        }
-
-        if (port == 0) {
-            throw std::invalid_argument("UdpPort setting for Onboard flight controller has an invalid value.");
-        }
-
-        addStatusMessage(Utils::stringf("Connecting to Onboard flight controller UDP port %d, IP %s", port, ip.c_str()));
-        // connection_ = mavlinkcom::MavLinkConnection::connectRemoteUdp("hil", connection_info_.local_host_ip, ip, port);
-        // hil_node_ = std::make_shared<mavlinkcom::MavLinkNode>(connection_info_.sim_sysid, connection_info_.sim_compid);
-        // hil_node_->connect(connection_);
-        addStatusMessage(std::string("Connected to Onboard flight controller over UDP."));
-
-        onboard_vehicle_ = std::make_shared<Vehicle>(linuxEnvironment->getVehicle()); 
-
-        // onboard_vehicle_->connect(connection_);
-        // onboard_vehicle_->startHeartbeat();
-    }
-
-    void createOnboardSerialConnection(const std::string& port_name, int baud_rate)
-    {
-        close();
-
-        std::string port_name_auto = port_name;
-        
-        if (port_name_auto == "") {
-            throw std::invalid_argument("Serial port for Onboard flight controller is empty. Please set it in settings.json.");
-        }
-
-        if (baud_rate == 0) {
-            throw std::invalid_argument("Baud rate specified in settings.json is 0 which is invalid");
-        }
-
-        addStatusMessage(Utils::stringf("Connecting to Onboard flight controller over serial port: %s, baud rate %d ....", port_name_auto.c_str(), baud_rate));
-                
-        onboard_vehicle_ = std::make_shared<Vehicle>(linuxEnvironment->getVehicle());   
-        
-        addStatusMessage("Connected to Onboard flight controller over serial port.");
-
     }
 
     // mavlinkcom::MavLinkHilSensor getLastSensorMessage()
@@ -551,13 +510,6 @@ public:
         }
     }
 
-    void openAllConnections()
-    {
-        close(); //just in case if connections were open
-        resetState(); //reset all variables we might have changed during last session
-        connect();
-
-    }
     void closeAllConnection()
     {
         close();
@@ -765,7 +717,7 @@ public:
 
         auto vec = getPosition();
         float z = vec.z() + getTakeoffZ();
-        int  timeout = 1000;
+        int  timeout = 100000;
 
         char func[50];
 
