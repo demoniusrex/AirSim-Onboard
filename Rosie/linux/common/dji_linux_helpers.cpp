@@ -62,6 +62,8 @@ LinuxSetup::~LinuxSetup()
 void
 LinuxSetup::setupEnvironment(int argc, char** argv)
 {
+  
+  std::cout << "Setup linux environment" << "\n";
 
   // Config file loading
   std::string config_file_path;
@@ -124,11 +126,16 @@ LinuxSetup::setupEnvironment(int argc, char** argv)
 void
 LinuxSetup::initVehicle()
 {
+  std::cout << "Initialize vehicle" << "\n";
+
   bool threadSupport = true;
   this->vehicle      = new Vehicle(environment->getDevice().c_str(),
                                    environment->getBaudrate(),
                                    threadSupport,
                                    this->useAdvancedSensing);
+
+
+  std::cout << "Get device status" << "\n";
 
   // Check if the communication is working fine
   if (!vehicle->protocolLayer->getDriver()->getDeviceStatus())
@@ -145,7 +152,11 @@ LinuxSetup::initVehicle()
   char app_key[65];
   activateData.encKey = app_key;
   strcpy(activateData.encKey, environment->getEnc_key().c_str());
+
+  std::cout << "Get firmware version" << "\n";
   activateData.version = vehicle->getFwVersion();
+  
+  std::cout << "Activate vehicle" << "\n";  
   ACK::ErrorCode ack   = vehicle->activate(&activateData, functionTimeout);
 
   if (ACK::getError(ack))
