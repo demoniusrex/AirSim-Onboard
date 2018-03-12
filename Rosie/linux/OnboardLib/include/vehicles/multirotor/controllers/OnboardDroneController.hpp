@@ -313,6 +313,7 @@ public:
                 { 
                     Telemetry::TOPIC_QUATERNION, 
                     Telemetry::TOPIC_GPS_FUSED, 
+                    Telemetry::TOPIC_GPS_POSITION, 
                     Telemetry::TOPIC_VELOCITY,  
                     Telemetry::TOPIC_ANGULAR_RATE_FUSIONED, 
                     Telemetry::TOPIC_ACCELERATION_GROUND, 
@@ -580,14 +581,13 @@ public:
         updateState();
         Kinematics::State state;
         
-        double                     deltaLon;
-        double                     deltaLat;
         Telemetry::TypeMap<Telemetry::TOPIC_GPS_FUSED>::type currentSubscriptionGPS;
         Telemetry::TypeMap<Telemetry::TOPIC_VELOCITY>::type currentVelocity;
         Telemetry::TypeMap<Telemetry::TOPIC_QUATERNION>::type currentOrientation;
         Telemetry::TypeMap<Telemetry::TOPIC_ANGULAR_RATE_FUSIONED>::type currentAngularRate;
         Telemetry::TypeMap<Telemetry::TOPIC_ACCELERATION_GROUND>::type currentAccelerationGround;
         Telemetry::TypeMap<Telemetry::TOPIC_ACCELERATION_BODY>::type currentAccelerationBody;
+        Telemetry::Vector3f localOffset;
 
         currentSubscriptionGPS = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_GPS_FUSED>();
         currentVelocity = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_VELOCITY>();
@@ -597,10 +597,11 @@ public:
         currentAccelerationGround = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_ACCELERATION_GROUND>();
         currentAccelerationBody = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_ACCELERATION_BODY>();
 
-        deltaLon   = currentSubscriptionGPS.longitude - originGPS.longitude;
-        deltaLat   = currentSubscriptionGPS.latitude - originGPS.latitude;
-        
-        state.pose.position = Vector3r(deltaLat * C_EARTH, deltaLon * C_EARTH * cos(currentSubscriptionGPS.latitude), currentSubscriptionGPS.altitude - originGPS.altitude);
+        localOffsetFromGpsOffset(localOffset,
+                                static_cast<void*>(&currentSubscriptionGPS),
+                                static_cast<void*>(&originGPS));
+
+        state.pose.position = Vector3r(localOffset.x, localOffset.y, localOffset.z);
         state.pose.orientation = VectorMath::toQuaternion(eulerOrientation.x, eulerOrientation.y, eulerOrientation.z);
         state.twist.linear = Vector3r(currentVelocity.data.x, currentVelocity.data.y, currentVelocity.data.z);
         state.twist.angular = Vector3r(currentAngularRate.x, currentAngularRate.y, currentAngularRate.z);
@@ -614,16 +615,13 @@ public:
     Vector3r getPosition()
     {
         updateState();
-        double deltaLon;
-        double deltaLat;
         Telemetry::TypeMap<Telemetry::TOPIC_GPS_FUSED>::type currentSubscriptionGPS;
-
+        Telemetry::Vector3f localOffset;
         currentSubscriptionGPS = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_GPS_FUSED>();
-
-        deltaLon   = currentSubscriptionGPS.longitude - originGPS.longitude;
-        deltaLat   = currentSubscriptionGPS.latitude - originGPS.latitude;
-        
-        return Vector3r(deltaLat * C_EARTH, deltaLon * C_EARTH * cos(currentSubscriptionGPS.latitude), currentSubscriptionGPS.altitude - originGPS.altitude);;
+        localOffsetFromGpsOffset(localOffset,
+                                static_cast<void*>(&currentSubscriptionGPS),
+                                static_cast<void*>(&originGPS));
+        return Vector3r(localOffset.x, localOffset.y, localOffset.z);
     }
 
     Vector3r getVelocity()
@@ -646,7 +644,7 @@ public:
     GeoPoint getHomeGeoPoint()
     {
         updateState();
-        return GeoPoint(Utils::nan<double>(), Utils::nan<double>(), Utils::nan<float>());
+        return GeoPoint(rad2Deg(originGPS.latitude), rad2Deg(originGPS.longitude), originGPS.altitude);
     }
 
     GeoPoint getGpsLocation()
@@ -654,14 +652,23 @@ public:
         updateState();
         Telemetry::TypeMap<Telemetry::TOPIC_GPS_FUSED>::type currentSubscriptionGPS;
         currentSubscriptionGPS = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_GPS_FUSED>();
-    
-        return GeoPoint(currentSubscriptionGPS.latitude, currentSubscriptionGPS.longitude, currentSubscriptionGPS.altitude);
+        return GeoPoint(rad2Deg(currentSubscriptionGPS.latitude), rad2Deg(currentSubscriptionGPS.longitude), currentSubscriptionGPS.altitude);
     }
 
     LandedState getLandedState()
     {
         updateState();
         return current_state == VehicleStatus::FlightStatus::IN_AIR ? LandedState::Flying : LandedState::Landed;
+    }
+
+    inline double rad2Deg(const double radians)
+    {
+        return (radians / M_PI) * 180.0;
+    }
+
+    inline double deg2Rad(const double degrees)
+    {
+        return (degrees / 180.0) * M_PI;
     }
 
     //administrative
@@ -696,12 +703,14 @@ public:
     {
         checkVehicle();
         if (is_enabled) {
-            // onboard_vehicle_->obtainCtrlAuthority(1000);
+            addStatusMessage(std::string("Obtain Vehicle Control Authority"));
+            onboard_vehicle_->obtainCtrlAuthority(1000);
             is_api_control_enabled_ = true;
         }
         else {
-            // onboard_vehicle_->releaseCtrlAuthority(1000);
+            onboard_vehicle_->releaseCtrlAuthority(1000);
             is_api_control_enabled_ = false;
+            addStatusMessage(std::string("Released Vehicle Control Authority"));
         }
     }
 
@@ -738,6 +747,9 @@ public:
             ACK::getErrorCodeMessage(takeoffStatus, func);
             throw VehicleMoveException("Takeoff failed. Error sending takeoff command.");
         }
+
+        // Set origin
+        setOrigin();
 
         // First check: Motors started
         std::cout << "Check motors" << std::endl;
@@ -994,12 +1006,12 @@ public:
 
     void commandRollPitchZ(float pitch, float roll, float z, float yaw)
     {
-        if (target_height_ != -z) {
+        if (target_height_ != z) {
             // these PID values were calculated experimentally using AltHoldCommand n MavLinkTest, this provides the best
             // control over thrust to achieve minimal over/under shoot in a reasonable amount of time, but it has not
             // been tested on a real drone outside jMavSim, so it may need recalibrating...
-            thrust_controller_.setPoint(-z, .05f, .005f, 0.09f);
-            target_height_ = -z;
+            thrust_controller_.setPoint(z, .05f, .005f, 0.09f);
+            target_height_ = z;
         }
         checkVehicle();
         //auto state = onboard_vehicle_->getVehicleState();
@@ -1051,7 +1063,7 @@ public:
     {
         // pick a number, PX4 doesn't have a fixed limit here, but 3 meters is probably safe 
         // enough to get out of the backwash turbulance.  Negative due to NED coordinate system.
-        return -3.0f;
+        return 1.1f;
     }
     float getDistanceAccuracy()
     {
@@ -1084,6 +1096,7 @@ public:
     bool startOffboardMode()
     {
         checkVehicle();
+        addStatusMessage(std::string("Obtain Vehicle Control Authority"));
         try {
             onboard_vehicle_->obtainCtrlAuthority(1000);
         }
@@ -1099,6 +1112,7 @@ public:
     {
         onboard_vehicle_->releaseCtrlAuthority();
         ensureSafeMode();
+        addStatusMessage(std::string("Released Vehicle Control Authority"));
     }
 
     void ensureSafeMode()
@@ -1126,6 +1140,30 @@ public:
             throw std::logic_error("Cannot perform operation when no vehicle is connected");
         }
     }
+
+
+    /*! Very simple calculation of local NED offset between two pairs of GPS
+    /coordinates.
+        Accurate when distances are small.
+    !*/
+    void
+    localOffsetFromGpsOffset(Telemetry::Vector3f& deltaNed,
+                            void* target, void* origin)
+    {
+        Telemetry::GPSFused*       subscriptionTarget;
+        Telemetry::GPSFused*       subscriptionOrigin;
+        double                     deltaLon;
+        double                     deltaLat;
+
+        subscriptionTarget = (Telemetry::GPSFused*)target;
+        subscriptionOrigin = (Telemetry::GPSFused*)origin;
+        deltaLon   = subscriptionTarget->longitude - subscriptionOrigin->longitude;
+        deltaLat   = subscriptionTarget->latitude - subscriptionOrigin->latitude;
+        deltaNed.x = deltaLat * C_EARTH;
+        deltaNed.y = deltaLon * C_EARTH * cos(subscriptionTarget->latitude);
+        deltaNed.z = subscriptionTarget->altitude - subscriptionOrigin->altitude;
+    }
+
 
     Telemetry::Vector3f toEulerAngle(void* quaternionData)
     {
