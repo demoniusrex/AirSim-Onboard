@@ -741,7 +741,9 @@ public:
         }
 
         // Start takeoff
-        std::cout << "Start Takeoff" << std::endl;
+        DSTATUS("(1)Start Takeoff");
+        addStatusMessage(std::string("(2)Start Takeoff"));
+        std::cout << "(3)Start Takeoff" << std::endl;
         ACK::ErrorCode takeoffStatus = onboard_vehicle_->control->takeoff(timeout);
         if (ACK::getError(takeoffStatus) != ACK::SUCCESS)
         {
@@ -825,7 +827,9 @@ public:
             onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>() !=
                 VehicleStatus::DisplayMode::MODE_ATTITUDE)
         {
-            std::cout << "Successful takeoff!\n";
+            DSTATUS("(1)Successful takeoff!");
+            addStatusMessage(std::string("(2)Successful takeoff!"));
+            std::cout << "(3)Successful takeoff!\n";
         }
         else
         {
@@ -847,15 +851,13 @@ public:
         bool rc = false;
         checkVehicle();
 
-        onboard_vehicle_->missionManager->wpMission->pause();
+        // if mission running pause mission
         onboard_vehicle_->control->emergencyBrake();
-
         //auto start_time = std::chrono::system_clock::now();
         while (!cancelable_action.isCancelled())
         {
-
         }
-        onboard_vehicle_->missionManager->wpMission->resume(1000);
+        // if mission was running resume mission
         return rc;
     }
 
@@ -1017,8 +1019,7 @@ public:
         }
         uint8_t mode = DJI::OSDK::Control::HorizontalLogic::HORIZONTAL_VELOCITY |
             DJI::OSDK::Control::VerticalLogic::VERTICAL_VELOCITY |
-            yaw_logic |
-            DJI::OSDK::Control::HorizontalCoordinate::HORIZONTAL_BODY; 
+            yaw_logic; 
         DJI::OSDK::Control::CtrlData flightControl(mode, vx, vy, -vz, yaw_mode.yaw_or_rate);
         onboard_vehicle_->control->flightCtrl(flightControl);
     }
@@ -1026,8 +1027,6 @@ public:
     void commandVelocityZ(float vx, float vy, float z, const YawMode& yaw_mode)
     {
         checkVehicle();
-        //float yaw = yaw_mode.yaw_or_rate * M_PIf / 180;
-        //onboard_vehicle_->moveByLocalVelocityWithAltHold(vx, vy, z, !yaw_mode.is_rate, yaw);
         uint8_t yaw_logic = DJI::OSDK::Control::YawLogic::YAW_RATE;
         if (!yaw_mode.is_rate)
         {
@@ -1035,8 +1034,7 @@ public:
         }
         uint8_t mode = DJI::OSDK::Control::HorizontalLogic::HORIZONTAL_VELOCITY |
             DJI::OSDK::Control::VerticalLogic::VERTICAL_POSITION |
-            yaw_logic |
-            DJI::OSDK::Control::HorizontalCoordinate::HORIZONTAL_BODY; 
+            yaw_logic; 
         DJI::OSDK::Control::CtrlData flightControl(mode, vx, vy, -z, yaw_mode.yaw_or_rate);
         onboard_vehicle_->control->flightCtrl(flightControl);
     }
@@ -1088,7 +1086,7 @@ public:
     }
     float getDistanceAccuracy()
     {
-        return 0.5f;    //measured in simulator by firing commands "MoveToLocation -x 0 -y 0" multiple times and looking at distance travelled
+        return 0.1f;    //measured in simulator by firing commands "MoveToLocation -x 0 -y 0" multiple times and looking at distance travelled
     }
     const VehicleParams& getVehicleParams()
     {
