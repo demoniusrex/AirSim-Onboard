@@ -182,6 +182,7 @@ public:
     int current_state;
     
     Telemetry::TypeMap<Telemetry::TOPIC_GPS_FUSED>::type originGPS;
+    bool is_wellknown_origin_;
     float target_height_;
     bool is_api_control_enabled_;
     bool is_simulation_mode_;
@@ -203,14 +204,12 @@ public:
             {
                 throw std::runtime_error("Error initializing Linux environment");
             }
-            std::cout << "Connect to flight controller" << "\n";
-            
+
+            std::cout << "Connect to flight controller" << "\n";            
             onboard_vehicle_ = linuxEnvironment->getVehicle();
-
             //connectToVideoServer();
-
             initializeOnboardSubscriptions();
-            setOrigin();
+            setOrigin(false);
             
             is_available_ = true;
         }
@@ -251,12 +250,13 @@ public:
         }
     }
 
-    void setOrigin()
+    void setOrigin(bool is_wellknown_origin)
     {
         if (onboard_vehicle_ != nullptr) 
         {
             // set origin point
             originGPS = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_GPS_FUSED>();
+            is_wellknown_origin_ = is_wellknown_origin;
             std::cout << "Set origin point" << "\n";
         }
     }
@@ -494,7 +494,7 @@ public:
                 //     gps_output.gnss.eph, gps_output.gnss.epv, gps_output.gnss.fix_type, 10);
             }
         }
-
+        
         //must be done at the end
         if (was_reset_)
             was_reset_ = false;
@@ -601,7 +601,7 @@ public:
                                 static_cast<void*>(&currentSubscriptionGPS),
                                 static_cast<void*>(&originGPS));
 
-        state.pose.position = Vector3r(localOffset.x, localOffset.y, localOffset.z);
+        state.pose.position = Vector3r(localOffset.x, localOffset.y, -localOffset.z);
         state.pose.orientation = VectorMath::toQuaternion(eulerOrientation.x, eulerOrientation.y, eulerOrientation.z);
         state.twist.linear = Vector3r(currentVelocity.data.x, currentVelocity.data.y, currentVelocity.data.z);
         state.twist.angular = Vector3r(currentAngularRate.x, currentAngularRate.y, currentAngularRate.z);
@@ -621,7 +621,7 @@ public:
         localOffsetFromGpsOffset(localOffset,
                                 static_cast<void*>(&currentSubscriptionGPS),
                                 static_cast<void*>(&originGPS));
-        return Vector3r(localOffset.x, localOffset.y, localOffset.z);
+        return Vector3r(localOffset.x, localOffset.y, -localOffset.z);
     }
 
     Vector3r getVelocity()
@@ -681,6 +681,7 @@ public:
         if (arm)
         {
             onboard_vehicle_->control->armMotors(1000);
+            setOrigin(true);
         }
         else 
         {
@@ -747,9 +748,6 @@ public:
             ACK::getErrorCodeMessage(takeoffStatus, func);
             throw VehicleMoveException("Takeoff failed. Error sending takeoff command.");
         }
-
-        // Set origin
-        setOrigin();
 
         // First check: Motors started
         std::cout << "Check motors" << std::endl;
@@ -999,42 +997,65 @@ public:
                 std::cout
                 << "Return home finished, but the aircraft is in an unexpected mode.\n";
             }
-
         }
         return rc;
     }
 
     void commandRollPitchZ(float pitch, float roll, float z, float yaw)
     {
-        if (target_height_ != z) {
-            // these PID values were calculated experimentally using AltHoldCommand n MavLinkTest, this provides the best
-            // control over thrust to achieve minimal over/under shoot in a reasonable amount of time, but it has not
-            // been tested on a real drone outside jMavSim, so it may need recalibrating...
-            thrust_controller_.setPoint(z, .05f, .005f, 0.09f);
-            target_height_ = z;
-        }
         checkVehicle();
-        //auto state = onboard_vehicle_->getVehicleState();
-        //float thrust = 0.21f + thrust_controller_.control(-state.local_est.pos.z);
-        //onboard_vehicle_->moveByAttitude(roll, pitch, yaw, 0, 0, 0, thrust);
+        onboard_vehicle_->control->attitudeAndVertPosCtrl(roll, pitch, yaw, -z);
     }
+
     void commandVelocity(float vx, float vy, float vz, const YawMode& yaw_mode)
     {
         checkVehicle();
-        //float yaw = yaw_mode.yaw_or_rate * M_PIf / 180;
-        //onboard_vehicle_->moveByLocalVelocity(vx, vy, vz, !yaw_mode.is_rate, yaw);
+        uint8_t yaw_logic = DJI::OSDK::Control::YawLogic::YAW_RATE;
+        if (!yaw_mode.is_rate)
+        {
+            yaw_logic = DJI::OSDK::Control::YawLogic::YAW_ANGLE;
+        }
+        uint8_t mode = DJI::OSDK::Control::HorizontalLogic::HORIZONTAL_VELOCITY |
+            DJI::OSDK::Control::VerticalLogic::VERTICAL_VELOCITY |
+            yaw_logic |
+            DJI::OSDK::Control::HorizontalCoordinate::HORIZONTAL_BODY; 
+        DJI::OSDK::Control::CtrlData flightControl(mode, vx, vy, -vz, yaw_mode.yaw_or_rate);
+        onboard_vehicle_->control->flightCtrl(flightControl);
     }
+
     void commandVelocityZ(float vx, float vy, float z, const YawMode& yaw_mode)
     {
         checkVehicle();
         //float yaw = yaw_mode.yaw_or_rate * M_PIf / 180;
         //onboard_vehicle_->moveByLocalVelocityWithAltHold(vx, vy, z, !yaw_mode.is_rate, yaw);
+        uint8_t yaw_logic = DJI::OSDK::Control::YawLogic::YAW_RATE;
+        if (!yaw_mode.is_rate)
+        {
+            yaw_logic = DJI::OSDK::Control::YawLogic::YAW_ANGLE;
+        }
+        uint8_t mode = DJI::OSDK::Control::HorizontalLogic::HORIZONTAL_VELOCITY |
+            DJI::OSDK::Control::VerticalLogic::VERTICAL_POSITION |
+            yaw_logic |
+            DJI::OSDK::Control::HorizontalCoordinate::HORIZONTAL_BODY; 
+        DJI::OSDK::Control::CtrlData flightControl(mode, vx, vy, -z, yaw_mode.yaw_or_rate);
+        onboard_vehicle_->control->flightCtrl(flightControl);
     }
+
     void commandPosition(float x, float y, float z, const YawMode& yaw_mode)
     {
         checkVehicle();
-        //float yaw = yaw_mode.yaw_or_rate * M_PIf / 180;
-        //onboard_vehicle_->moveToLocalPosition(x, y, z, !yaw_mode.is_rate, yaw);
+        uint8_t yaw_logic = DJI::OSDK::Control::YawLogic::YAW_RATE;
+        if (!yaw_mode.is_rate)
+        {
+            yaw_logic = DJI::OSDK::Control::YawLogic::YAW_ANGLE;
+        }
+        uint8_t mode = DJI::OSDK::Control::HorizontalLogic::HORIZONTAL_POSITION |
+            DJI::OSDK::Control::VerticalLogic::VERTICAL_POSITION |
+            yaw_logic |
+            DJI::OSDK::Control::HorizontalCoordinate::HORIZONTAL_GROUND |
+            DJI::OSDK::Control::StableMode::STABLE_ENABLE;
+        DJI::OSDK::Control::CtrlData flightControl(mode, x, y, -z, yaw_mode.yaw_or_rate);
+        onboard_vehicle_->control->flightCtrl(flightControl);
     }
 
     RCData getRCData()
@@ -1063,7 +1084,7 @@ public:
     {
         // pick a number, PX4 doesn't have a fixed limit here, but 3 meters is probably safe 
         // enough to get out of the backwash turbulance.  Negative due to NED coordinate system.
-        return 1.1f;
+        return -1.1f;
     }
     float getDistanceAccuracy()
     {
