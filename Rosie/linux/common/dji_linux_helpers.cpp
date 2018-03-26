@@ -28,6 +28,7 @@
  */
 
 #include <dji_linux_helpers.hpp>
+#include <dji_log.hpp>
 
 using namespace DJI::OSDK;
 
@@ -61,10 +62,8 @@ LinuxSetup::~LinuxSetup()
 
 void
 LinuxSetup::setupEnvironment(int argc, char** argv)
-{
-  
-  std::cout << "Setup linux environment" << "\n";
-
+{  
+  DSTATUS(std::string("Setup linux environment").c_str());
   // Config file loading
   std::string config_file_path;
 
@@ -126,7 +125,7 @@ LinuxSetup::setupEnvironment(int argc, char** argv)
 void
 LinuxSetup::initVehicle()
 {
-  std::cout << "Initialize vehicle" << "\n";
+  DSTATUS(std::string("Initialize vehicle").c_str());
 
   bool threadSupport = true;
   this->vehicle      = new Vehicle(environment->getDevice().c_str(),
@@ -135,12 +134,12 @@ LinuxSetup::initVehicle()
                                    this->useAdvancedSensing);
 
 
-  std::cout << "Get device status" << "\n";
-
+  DSTATUS(std::string("Get device status").c_str());
   // Check if the communication is working fine
   if (!vehicle->protocolLayer->getDriver()->getDeviceStatus())
   {
-    std::cout << "Comms appear to be incorrectly set up. Exiting.\n";
+    DERROR(std::string("Comms appear to be incorrectly set up. Exiting").c_str());
+    std::cout << "\nComms appear to be incorrectly set up. Exiting" << "\n";
     delete (vehicle);
     delete (environment);
     this->vehicle     = nullptr;
@@ -153,10 +152,10 @@ LinuxSetup::initVehicle()
   activateData.encKey = app_key;
   strcpy(activateData.encKey, environment->getEnc_key().c_str());
 
-  std::cout << "Get firmware version" << "\n";
+  DSTATUS(std::string("Get firmware version").c_str());
   activateData.version = vehicle->getFwVersion();
   
-  std::cout << "Activate vehicle" << "\n";  
+  DSTATUS(std::string("Activate vehicle").c_str());
   ACK::ErrorCode ack   = vehicle->activate(&activateData, functionTimeout);
 
   if (ACK::getError(ack))

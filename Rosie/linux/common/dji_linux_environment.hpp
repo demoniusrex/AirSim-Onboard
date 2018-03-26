@@ -35,6 +35,7 @@
 #include <ostream>
 #include <stdexcept>
 #include <unistd.h>
+#include <dji_log.hpp>
 
 class DJI_Environment
 {

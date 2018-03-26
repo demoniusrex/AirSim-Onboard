@@ -34,6 +34,7 @@
 #include <fstream>
 #include <dji_linux_environment.hpp>
 #include <dji_vehicle.hpp>
+#include <dji_log.hpp>
 
 class LinuxSetup
 {

@@ -27,7 +27,8 @@
  *
  */
 
-#include "dji_linux_environment.hpp"
+#include <dji_linux_environment.hpp>
+#include <dji_log.hpp>
 
 DJI_Environment::DJI_Environment(const std::string& config_file_path)
 {
@@ -114,7 +115,7 @@ DJI_Environment::parse(std::string config_file_path)
       {
         if (sscanf(line, "app_id : %d", &this->app_id))
         {
-          std::cout << "Read App ID\n";
+          DSTATUS(std::string("Read Onboard App ID").c_str());
           setID = true;
         }
         if (sscanf(line, "app_key : %s", key))
@@ -135,12 +136,14 @@ DJI_Environment::parse(std::string config_file_path)
     }
     if (setBaud && setID && setKey && setSerialDevice)
     {
-      std::cout << "User Configuration read successfully. \n\n";
+      DSTATUS(std::string("Onboard User Configuration Loaded").c_str());
+      std::cout << " \n\n";
       result = true;
     }
     else
     {
-      std::cout << "There's an error with your UserConfig.txt file.\n";
+      DERROR(std::string("Unable to read UserConfig.txt file").c_str());
+      std::cout << "Unable to read UserConfig.txt file.\n";
       result = false;
     }
 
@@ -148,6 +151,7 @@ DJI_Environment::parse(std::string config_file_path)
   }
   else
   {
+    DERROR(std::string("Unable to read UserConfig.txt file").c_str());
     std::cout << "User config file could not be opened. Make sure your "
                  "filepath is correct\n"
               << "and have sufficient permissions." << std::endl;

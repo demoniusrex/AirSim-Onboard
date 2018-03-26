@@ -32,11 +32,11 @@
 // onboard
 #include "dji_control.hpp"
 #include "dji_status.hpp"
-
+#include "dji_log.hpp"
 #include "dji_telemetry.hpp"
 #include "dji_vehicle.hpp"
 
-#include <dji_linux_helpers.hpp>
+#include "dji_linux_helpers.hpp"
 
 using namespace DJI::OSDK;
 using namespace std;
@@ -197,15 +197,15 @@ public:
         is_simulation_mode_ = is_simulation;
 
         try {
-            
-            std::cout << "Initialize Linux environment" << "\n";
+            DSTATUS(std::string("Initialize Linux environment").c_str());
             linuxEnvironment = new LinuxSetup(argc, argv);
             if (linuxEnvironment == NULL)
             {
                 throw std::runtime_error("Error initializing Linux environment");
             }
 
-            std::cout << "Connect to flight controller" << "\n";            
+            
+            DSTATUS(std::string("Connect to flight controller").c_str());
             onboard_vehicle_ = linuxEnvironment->getVehicle();
             //connectToVideoServer();
             initializeOnboardSubscriptions();
@@ -258,13 +258,14 @@ public:
             originGPS = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_GPS_FUSED>();
             is_wellknown_origin_ = is_wellknown_origin;
             std::cout << "Set origin point" << "\n";
+            addStatusMessage(std::string("Set origin point").c_str());
         }
     }
 
     void initializeOnboardSubscriptions()
     {
         if (onboard_vehicle_ != nullptr) {
-            std::cout << "Initialize flight controller subscriptions..." << "\n";
+            DSTATUS(std::string("Initialize subscriptions").c_str());
             is_any_heartbeat_ = false;
             is_armed_ = false;
             is_controls_0_1_ = true;
@@ -338,7 +339,7 @@ public:
                     throw std::runtime_error(func);
                 }
             }
-            std::cout << "Started flight controller subscriptions" << "\n";
+            DSTATUS(std::string("Started flight controller subscriptions").c_str());
         }
     }
 
@@ -416,8 +417,6 @@ public:
         setNormalMode();
     }
     
-    
-
     const ImuBase* getImu()
     {
         return static_cast<const ImuBase*>(sensors_->getByType(SensorBase::SensorType::Imu));
@@ -682,10 +681,12 @@ public:
         {
             onboard_vehicle_->control->armMotors(1000);
             setOrigin(true);
+            addStatusMessage(std::string("Motors Armed"));
         }
         else 
         {
             onboard_vehicle_->control->disArmMotors(1000);
+            addStatusMessage(std::string("Motors Disarmed"));
         }
         return rc;
     }
@@ -704,9 +705,9 @@ public:
     {
         checkVehicle();
         if (is_enabled) {
-            addStatusMessage(std::string("Obtain Vehicle Control Authority"));
             onboard_vehicle_->obtainCtrlAuthority(1000);
             is_api_control_enabled_ = true;
+            addStatusMessage(std::string("Obtained Vehicle Control Authority"));
         }
         else {
             onboard_vehicle_->releaseCtrlAuthority(1000);
@@ -741,9 +742,7 @@ public:
         }
 
         // Start takeoff
-        DSTATUS("(1)Start Takeoff");
-        addStatusMessage(std::string("(2)Start Takeoff"));
-        std::cout << "(3)Start Takeoff" << std::endl;
+        addStatusMessage(std::string("Start Takeoff"));
         ACK::ErrorCode takeoffStatus = onboard_vehicle_->control->takeoff(timeout);
         if (ACK::getError(takeoffStatus) != ACK::SUCCESS)
         {
@@ -751,8 +750,9 @@ public:
             throw VehicleMoveException("Takeoff failed. Error sending takeoff command.");
         }
 
-        // First check: Motors started
-        std::cout << "Check motors" << std::endl;
+        // First check: Motors started        
+        addStatusMessage(std::string("Start Takeoff"));
+        addStatusMessage(std::string("Check motors"));
         int motorsNotStarted = 0;
         int timeoutCycles    = 20;
 
@@ -777,7 +777,7 @@ public:
         }
         else
         {
-            std::cout << "Motors spinning...\n";
+            addStatusMessage(std::string("Motors spinning"));
         }
 
         // Second check: In air
@@ -808,7 +808,7 @@ public:
         }
         else
         {
-            std::cout << "Ascending...\n";
+            addStatusMessage(std::string("Ascending"));
         }
 
         // Final check: Finished takeoff
@@ -827,9 +827,7 @@ public:
             onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>() !=
                 VehicleStatus::DisplayMode::MODE_ATTITUDE)
         {
-            DSTATUS("(1)Successful takeoff!");
-            addStatusMessage(std::string("(2)Successful takeoff!"));
-            std::cout << "(3)Successful takeoff!\n";
+            addStatusMessage(std::string("Successful takeoff"));
         }
         else
         {
@@ -908,7 +906,7 @@ public:
         }
         else
         {
-            std::cout << "Landing...\n";
+            addStatusMessage(std::string("Landing"));
         }
 
         // Second check: Finished landing
@@ -926,7 +924,7 @@ public:
             onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>() !=
                 VehicleStatus::DisplayMode::MODE_ATTITUDE)
         {
-            std::cout << "Successful landing!\n";
+            addStatusMessage(std::string("Successful landing"));
         }
         else
         {
@@ -974,7 +972,7 @@ public:
             }
             else
             {
-                std::cout << "Returning Home...\n";
+                addStatusMessage(std::string("Returning home"));
             }
 
             // Second check: Finished landing
@@ -992,7 +990,7 @@ public:
                 onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>() ==
                     VehicleStatus::DisplayMode::MODE_ATTITUDE)
             {
-                std::cout << "Returned home!\n";
+                addStatusMessage(std::string("Returned home"));
             }
             else
             {
@@ -1005,12 +1003,14 @@ public:
 
     void commandRollPitchZ(float pitch, float roll, float z, float yaw)
     {
+        addStatusMessage(std::string("Received Command RollPitchZ"));
         checkVehicle();
         onboard_vehicle_->control->attitudeAndVertPosCtrl(roll, pitch, yaw, -z);
     }
 
     void commandVelocity(float vx, float vy, float vz, const YawMode& yaw_mode)
     {
+        addStatusMessage(std::string("Received Command Velocity"));
         checkVehicle();
         uint8_t yaw_logic = DJI::OSDK::Control::YawLogic::YAW_RATE;
         if (!yaw_mode.is_rate)
@@ -1019,6 +1019,7 @@ public:
         }
         uint8_t mode = DJI::OSDK::Control::HorizontalLogic::HORIZONTAL_VELOCITY |
             DJI::OSDK::Control::VerticalLogic::VERTICAL_VELOCITY |
+            DJI::OSDK::Control::HorizontalCoordinate::HORIZONTAL_BODY |
             yaw_logic; 
         DJI::OSDK::Control::CtrlData flightControl(mode, vx, vy, -vz, yaw_mode.yaw_or_rate);
         onboard_vehicle_->control->flightCtrl(flightControl);
@@ -1026,6 +1027,7 @@ public:
 
     void commandVelocityZ(float vx, float vy, float z, const YawMode& yaw_mode)
     {
+        addStatusMessage(std::string("Received Command VelocityZ"));
         checkVehicle();
         uint8_t yaw_logic = DJI::OSDK::Control::YawLogic::YAW_RATE;
         if (!yaw_mode.is_rate)
@@ -1041,6 +1043,7 @@ public:
 
     void commandPosition(float x, float y, float z, const YawMode& yaw_mode)
     {
+        addStatusMessage(std::string("Received Command Position ") + "x:" + std::to_string(x) + ",y:" + std::to_string(y) + ",z:" + std::to_string(z) + ",yaw:" + std::to_string(yaw_mode.yaw_or_rate));
         checkVehicle();
         uint8_t yaw_logic = DJI::OSDK::Control::YawLogic::YAW_RATE;
         if (!yaw_mode.is_rate)
@@ -1049,9 +1052,8 @@ public:
         }
         uint8_t mode = DJI::OSDK::Control::HorizontalLogic::HORIZONTAL_POSITION |
             DJI::OSDK::Control::VerticalLogic::VERTICAL_POSITION |
-            yaw_logic |
-            DJI::OSDK::Control::HorizontalCoordinate::HORIZONTAL_GROUND |
-            DJI::OSDK::Control::StableMode::STABLE_ENABLE;
+            yaw_logic;
+
         DJI::OSDK::Control::CtrlData flightControl(mode, x, y, -z, yaw_mode.yaw_or_rate);
         onboard_vehicle_->control->flightCtrl(flightControl);
     }
@@ -1166,8 +1168,7 @@ public:
         Accurate when distances are small.
     !*/
     void
-    localOffsetFromGpsOffset(Telemetry::Vector3f& deltaNed,
-                            void* target, void* origin)
+    localOffsetFromGpsOffset(Telemetry::Vector3f& deltaNed, void* target, void* origin)
     {
         Telemetry::GPSFused*       subscriptionTarget;
         Telemetry::GPSFused*       subscriptionOrigin;
@@ -1314,7 +1315,6 @@ bool OnboardDroneController::armDisarm(bool arm, CancelableBase& cancelable_acti
 {
     return pimpl_->armDisarm(arm, cancelable_action);
 }
-
 
 void OnboardDroneController::enableApiControl(bool is_enabled)
 {
