@@ -1010,7 +1010,7 @@ public:
 
     void commandVelocity(float vx, float vy, float vz, const YawMode& yaw_mode)
     {
-        addStatusMessage(std::string("Received Command Velocity"));
+        addStatusMessage(std::string("Received Command Velocity") + "vx:" + std::to_string(vx) + ",vy:" + std::to_string(vy) + ",vz:" + std::to_string(vz) + ",yaw or rate:" + std::to_string(yaw_mode.yaw_or_rate));
         checkVehicle();
         uint8_t yaw_logic = DJI::OSDK::Control::YawLogic::YAW_RATE;
         if (!yaw_mode.is_rate)
@@ -1019,15 +1019,19 @@ public:
         }
         uint8_t mode = DJI::OSDK::Control::HorizontalLogic::HORIZONTAL_VELOCITY |
             DJI::OSDK::Control::VerticalLogic::VERTICAL_VELOCITY |
-            DJI::OSDK::Control::HorizontalCoordinate::HORIZONTAL_BODY |
-            yaw_logic; 
+            yaw_logic |
+            DJI::OSDK::Control::HorizontalCoordinate::HORIZONTAL_GROUND;
+        if (vx < 0.001f && vx > -0.001f) 
+        {
+            vx = 0.001f;
+        }
         DJI::OSDK::Control::CtrlData flightControl(mode, vx, vy, -vz, yaw_mode.yaw_or_rate);
         onboard_vehicle_->control->flightCtrl(flightControl);
     }
 
     void commandVelocityZ(float vx, float vy, float z, const YawMode& yaw_mode)
     {
-        addStatusMessage(std::string("Received Command VelocityZ"));
+        addStatusMessage(std::string("Received Command VelocityZ") + "vx:" + std::to_string(vx) + ",vy:" + std::to_string(vy) + ",z:" + std::to_string(z) + ",yaw or rate:" + std::to_string(yaw_mode.yaw_or_rate));
         checkVehicle();
         uint8_t yaw_logic = DJI::OSDK::Control::YawLogic::YAW_RATE;
         if (!yaw_mode.is_rate)
@@ -1036,14 +1040,19 @@ public:
         }
         uint8_t mode = DJI::OSDK::Control::HorizontalLogic::HORIZONTAL_VELOCITY |
             DJI::OSDK::Control::VerticalLogic::VERTICAL_POSITION |
-            yaw_logic; 
+            yaw_logic |
+            DJI::OSDK::Control::HorizontalCoordinate::HORIZONTAL_GROUND; 
+        if (vx < 0.001f && vx > -0.001f) 
+        {
+            vx = 0.001f;
+        }
         DJI::OSDK::Control::CtrlData flightControl(mode, vx, vy, -z, yaw_mode.yaw_or_rate);
         onboard_vehicle_->control->flightCtrl(flightControl);
     }
 
     void commandPosition(float x, float y, float z, const YawMode& yaw_mode)
     {
-        addStatusMessage(std::string("Received Command Position ") + "x:" + std::to_string(x) + ",y:" + std::to_string(y) + ",z:" + std::to_string(z) + ",yaw:" + std::to_string(yaw_mode.yaw_or_rate));
+        addStatusMessage(std::string("Received Command Position ") + "x:" + std::to_string(x) + ",y:" + std::to_string(y) + ",z:" + std::to_string(z) + ",yaw or rate:" + std::to_string(yaw_mode.yaw_or_rate));
         checkVehicle();
         uint8_t yaw_logic = DJI::OSDK::Control::YawLogic::YAW_RATE;
         if (!yaw_mode.is_rate)
@@ -1052,8 +1061,12 @@ public:
         }
         uint8_t mode = DJI::OSDK::Control::HorizontalLogic::HORIZONTAL_POSITION |
             DJI::OSDK::Control::VerticalLogic::VERTICAL_POSITION |
-            yaw_logic;
-
+            yaw_logic |
+            DJI::OSDK::Control::HorizontalCoordinate::HORIZONTAL_GROUND;
+        if (x < 0.001f && x > -0.001f) 
+        {
+            x = 0.001f;
+        }
         DJI::OSDK::Control::CtrlData flightControl(mode, x, y, -z, yaw_mode.yaw_or_rate);
         onboard_vehicle_->control->flightCtrl(flightControl);
     }
