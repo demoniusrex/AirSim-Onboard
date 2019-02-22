@@ -1010,7 +1010,7 @@ public:
 
     void commandVelocity(float vx, float vy, float vz, const YawMode& yaw_mode)
     {
-        addStatusMessage(std::string("Received Command Velocity") + "vx:" + std::to_string(vx) + ",vy:" + std::to_string(vy) + ",vz:" + std::to_string(vz) + ",yaw or rate:" + std::to_string(yaw_mode.yaw_or_rate));
+        addStatusMessage(std::string("Received Command Velocity,") + "vx:" + std::to_string(vx) + ",vy:" + std::to_string(vy) + ",vz:" + std::to_string(vz) + ",yaw or rate:" + std::to_string(yaw_mode.yaw_or_rate));
         checkVehicle();
         uint8_t yaw_logic = DJI::OSDK::Control::YawLogic::YAW_RATE;
         if (!yaw_mode.is_rate)
@@ -1031,7 +1031,7 @@ public:
 
     void commandVelocityZ(float vx, float vy, float z, const YawMode& yaw_mode)
     {
-        addStatusMessage(std::string("Received Command VelocityZ") + "vx:" + std::to_string(vx) + ",vy:" + std::to_string(vy) + ",z:" + std::to_string(z) + ",yaw or rate:" + std::to_string(yaw_mode.yaw_or_rate));
+        addStatusMessage(std::string("Received Command VelocityZ,") + "vx:" + std::to_string(vx) + ",vy:" + std::to_string(vy) + ",z:" + std::to_string(z) + ",yaw or rate:" + std::to_string(yaw_mode.yaw_or_rate));
         checkVehicle();
         uint8_t yaw_logic = DJI::OSDK::Control::YawLogic::YAW_RATE;
         if (!yaw_mode.is_rate)
@@ -1052,8 +1052,16 @@ public:
 
     void commandPosition(float x, float y, float z, const YawMode& yaw_mode)
     {
-        addStatusMessage(std::string("Received Command Position ") + "x:" + std::to_string(x) + ",y:" + std::to_string(y) + ",z:" + std::to_string(z) + ",yaw or rate:" + std::to_string(yaw_mode.yaw_or_rate));
+        addStatusMessage(std::string("Received Command Position,") + "x:" + std::to_string(x) + ",y:" + std::to_string(y) + ",z:" + std::to_string(z) + ",yaw or rate:" + std::to_string(yaw_mode.yaw_or_rate));
         checkVehicle();
+        
+        Vector3r vec = getPosition();
+
+        x = x - vec.x();
+        y = y - vec.y();
+        
+        addStatusMessage(std::string("Use Position Offset,") + "x:" + std::to_string(x) + ",y:" + std::to_string(y) + ",z:" + std::to_string(z) + ",yaw or rate:" + std::to_string(yaw_mode.yaw_or_rate));
+
         uint8_t yaw_logic = DJI::OSDK::Control::YawLogic::YAW_RATE;
         if (!yaw_mode.is_rate)
         {
