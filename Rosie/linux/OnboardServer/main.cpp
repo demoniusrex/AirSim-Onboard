@@ -19,8 +19,8 @@ using namespace std;
 using namespace msr::airlib;
 using namespace Rosie::OnboardLib;
 void printUsage() {
-    cout << "Usage: DroneServer" << endl;
-    cout << "Start the DroneServer using the 'PX4' settings in ~/Documents/AirSim/settings.json." << endl;
+    cout << "Usage: OnboardServer" << endl;
+    cout << "Start the OnboardServer using the 'OnboardSDK' settings in ~/Documents/AirSim/settings.json." << endl;
 }
 
 int main(int argc, char** argv)

@@ -197,21 +197,21 @@ public:
         is_simulation_mode_ = is_simulation;
 
         try {
-            DSTATUS(std::string("Initialize Linux environment").c_str());
+            DSTATUS(std::string("Initialize Vehicle").c_str());
+            DSTATUS(std::string("Initialize Onboard SDK Linux environment").c_str());
             linuxEnvironment = new LinuxSetup(argc, argv);
             if (linuxEnvironment == NULL)
             {
-                throw std::runtime_error("Error initializing Linux environment");
+                throw std::runtime_error("Error initializing Onboard SDK Linux environment");
             }
-
-            
             DSTATUS(std::string("Connect to flight controller").c_str());
             onboard_vehicle_ = linuxEnvironment->getVehicle();
             //connectToVideoServer();
+            DSTATUS(std::string("Initialize Vehicle Data Subscriptions").c_str());
             initializeOnboardSubscriptions();
             setOrigin(false);
-            
             is_available_ = true;
+            DSTATUS(std::string("Vehicle initialized").c_str());
         }
         catch (std::exception& ex) {
             is_available_ = false;
@@ -255,10 +255,9 @@ public:
         if (onboard_vehicle_ != nullptr) 
         {
             // set origin point
+            DSTATUS(std::string("Set origin point").c_str());
             originGPS = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_GPS_FUSED>();
             is_wellknown_origin_ = is_wellknown_origin;
-            std::cout << "Set origin point" << "\n";
-            addStatusMessage(std::string("Set origin point").c_str());
         }
     }
 
@@ -282,6 +281,7 @@ public:
             }
 
             {
+                DSTATUS(std::string("Subscribe to Onboard SDK flight status and vehicle status topics").c_str());
                 // Telemetry: Subscribe to flight status and mode at freq 10 Hz
                 pkgIndex                  = 0;
                 int       freq            = 10;
@@ -306,6 +306,7 @@ public:
                 }
             }
             {
+                DSTATUS(std::string("Subscribe to Onboard SDK position, velocity and acceleration topics").c_str());
                 // Telemetry: Subscribe to quaternion, fused lat/lon and altitude at freq 50
                 // Hz
                 pkgIndex                  = 1;
@@ -339,7 +340,7 @@ public:
                     throw std::runtime_error(func);
                 }
             }
-            DSTATUS(std::string("Started flight controller subscriptions").c_str());
+            DSTATUS(std::string("Started all flight controller subscriptions").c_str());
         }
     }
 
@@ -679,12 +680,14 @@ public:
         bool rc = false;
         if (arm)
         {
+            addStatusMessage(std::string("Arm vehicle"));
             onboard_vehicle_->control->armMotors(1000);
             setOrigin(true);
             addStatusMessage(std::string("Motors Armed"));
         }
         else 
         {
+            addStatusMessage(std::string("Disarm Vehicle"));
             onboard_vehicle_->control->disArmMotors(1000);
             addStatusMessage(std::string("Motors Disarmed"));
         }
@@ -733,6 +736,7 @@ public:
         char func[50];
 
         // Telemetry: Verify the subscription
+        addStatusMessage(std::string("Verify vehicle connection"));
         ACK::ErrorCode subscribeStatus;
         subscribeStatus = onboard_vehicle_->subscribe->verify(timeout);
         if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
@@ -870,6 +874,7 @@ public:
         checkVehicle();
         
         // Telemetry: Verify the subscription
+        addStatusMessage(std::string("Verify vehicle connection"));
         ACK::ErrorCode subscribeStatus;
         subscribeStatus = onboard_vehicle_->subscribe->verify(max_wait_seconds);
         if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
