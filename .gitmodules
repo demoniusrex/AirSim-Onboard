@@ -1,7 +1,7 @@
 [submodule "Onboard-SDK"]
 	path = Onboard-SDK
 	url = https://github.com/demoniusrex/Onboard-SDK.git
-	branch = rosie/3.6
+	branch = rosie/3.7
 [submodule "AirSim"]
 	path = AirSim
 	url = https://github.com/demoniusrex/AirSim.git
