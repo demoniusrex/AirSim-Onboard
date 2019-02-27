@@ -5,3 +5,4 @@
 [submodule "AirSim"]
 	path = AirSim
 	url = https://github.com/demoniusrex/AirSim.git
+	branch = rosie/master
