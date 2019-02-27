@@ -35,16 +35,17 @@ int main(int argc, char** argv)
     if (is_simulation) { std::cout << "You are running in simulation mode." << std::endl; }   
     else { std::cout << "WARNING: This is not simulation!" << std::endl; }
         
-    std::cout << "\n" << "Start Onboard Server" << "\n";
+    std::cout << std::endl << "Start Onboard Server" << std::endl;
     DJI::OSDK::Log::instance().enableStatusLogging();
-    DSTATUS(std::string("Start Onboard Server").c_str());
+    DJI::OSDK::Log::instance().title(1, "STATUS").print(std::string("Start Onboard Server").c_str());    
+    std::cout << std::endl;
 
     OnboardDroneController::ConnectionInfo connection_info;
     std::string host_ip = "127.0.0.1";
     int host_port = 41451;
     std::string onboard_version = "[Undefined]";
 
-    DSTATUS(std::string("Load Settings").c_str());
+    std::cout << "Load Settings" << std::endl;
     // read settings and override defaults
     auto onboardconfig_full_filepath = Settings::getUserDirectoryFullPath("UserConfig.txt");
     auto settings_full_filepath = Settings::getUserDirectoryFullPath("settings.json");
@@ -78,35 +79,35 @@ int main(int argc, char** argv)
     int onboard_argc = 2;
     char* onboard_argv[] = { argv[0], &onboardconfig_full_filepath[0] };
 
-    DSTATUS(std::string("Initialize flight controller").c_str());
+    std::cout << "Initialize flight controller" << std::endl;
     OnboardDroneController onboard_drone;
     onboard_drone.initialize(connection_info, nullptr, is_simulation, onboard_argc, onboard_argv);
     onboard_drone.reset();
     RealMultirotorConnector connector(& onboard_drone);
 
-    DSTATUS(std::string("Start network server").c_str());
+    std::cout << "Start Onboard RPC server" << std::endl;
     MultirotorApi server_wrapper(& connector);
-    msr::airlib::MultirotorRpcLibServer server(&server_wrapper, host_ip, host_port);    
+    msr::airlib::MultirotorRpcLibServer server(&server_wrapper, host_ip, host_port);
     server.start(false);
 
-    std::cout << "\n\nServer connected to Onboard" << std::endl;
+    std::cout << std::endl << std::endl << "Onboard RPC Server started" << std::endl;
     std::cout << "Hit Ctrl+C to terminate." << std::endl;
 
-    DSTATUS(std::string("Server Started").c_str());
+    DSTATUS(std::string("Onboard server started").c_str());
     std::vector<std::string> messages;
     while (true) {
         //check messages
         server_wrapper.getStatusMessages(messages);
         if (messages.size() > 1) {
-            for (const auto& message : messages) {
-                DSTATUS(message.c_str());
+            for (std::string& message : messages) {
+                DJI::OSDK::Log::instance().title(1, "STATUS").print(message.c_str());
             }
         }
         constexpr static std::chrono::milliseconds MessageCheckDurationMillis(100);
         std::this_thread::sleep_for(MessageCheckDurationMillis);
         onboard_drone.reportTelemetry(100);
     }
-    DSTATUS(std::string("Server Stopped").c_str());
-    std::cout << "\nServer Stopped" << "\n";    
+    std::cout << std::endl << "Server Stopped" << std::endl;
+    DSTATUS(std::string("Onboard server stopped").c_str());
     return 0;
 }

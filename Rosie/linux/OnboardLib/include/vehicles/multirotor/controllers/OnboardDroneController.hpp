@@ -137,6 +137,14 @@ protected:
 private: //pimpl
     struct impl;
     std::unique_ptr<impl> pimpl_;
+
+    struct DiagnosticMessages {
+        std::string armVehicle = std::string("Arm vehicle");
+        std::string disarmVehicle = std::string("Disarm Vehicle");
+        std::string motorsArmed = std::string("Motors Armed");
+        std::string motorsDisarmed = std::string("Motors Disarmed");
+    };
+
 };
 
 struct OnboardDroneController::impl {
@@ -162,6 +170,7 @@ public:
 
     //variables required for VehicleControllerBase implementation
     ConnectionInfo connection_info_;
+    DiagnosticMessages diagnostic_messages_;
     bool is_any_heartbeat_, is_armed_;
     bool is_controls_0_1_; //Are motor controls specified in 0..1 or -1..1?
     float rotor_controls_[RotorControlsCount];
@@ -192,26 +201,30 @@ public:
 
     void initialize(const ConnectionInfo& connection_info, const SensorCollection* sensors, bool is_simulation, int argc, char** argv)
     {
+        DiagnosticMessages diagnostic_messages;
+        diagnostic_messages_ = diagnostic_messages;
+    
         connection_info_ = connection_info;
         sensors_ = sensors;
         is_simulation_mode_ = is_simulation;
 
         try {
-            DSTATUS(std::string("Initialize Vehicle").c_str());
-            DSTATUS(std::string("Initialize Onboard SDK Linux environment").c_str());
+            //std::cout << "Initialize vehicle" << std::endl;
+            //std::cout << "Initialize Onboard SDK Linux environment" << std::endl;
             linuxEnvironment = new LinuxSetup(argc, argv);
             if (linuxEnvironment == NULL)
             {
                 throw std::runtime_error("Error initializing Onboard SDK Linux environment");
             }
-            DSTATUS(std::string("Connect to flight controller").c_str());
+            //std::cout << "Connect to flight controller" << std::endl;
             onboard_vehicle_ = linuxEnvironment->getVehicle();
             //connectToVideoServer();
-            DSTATUS(std::string("Initialize Vehicle Data Subscriptions").c_str());
+            //std::cout << "Initialize vehicle data subscriptions" << std::endl;
             initializeOnboardSubscriptions();
+            //std::cout << "Set position origin" << std::endl;
             setOrigin(false);
             is_available_ = true;
-            DSTATUS(std::string("Vehicle initialized").c_str());
+            //std::cout << "Vehicle initialized" << std::endl;
         }
         catch (std::exception& ex) {
             is_available_ = false;
@@ -255,7 +268,6 @@ public:
         if (onboard_vehicle_ != nullptr) 
         {
             // set origin point
-            DSTATUS(std::string("Set origin point").c_str());
             originGPS = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_GPS_FUSED>();
             is_wellknown_origin_ = is_wellknown_origin;
         }
@@ -264,7 +276,7 @@ public:
     void initializeOnboardSubscriptions()
     {
         if (onboard_vehicle_ != nullptr) {
-            DSTATUS(std::string("Initialize subscriptions").c_str());
+            //std::cout << "Initialize subscriptions" << std::endl;
             is_any_heartbeat_ = false;
             is_armed_ = false;
             is_controls_0_1_ = true;
@@ -281,7 +293,7 @@ public:
             }
 
             {
-                DSTATUS(std::string("Subscribe to Onboard SDK flight status and vehicle status topics").c_str());
+                //std::cout << "Subscribe to Onboard SDK flight status and vehicle status topics" << std::endl;
                 // Telemetry: Subscribe to flight status and mode at freq 10 Hz
                 pkgIndex                  = 0;
                 int       freq            = 10;
@@ -306,7 +318,7 @@ public:
                 }
             }
             {
-                DSTATUS(std::string("Subscribe to Onboard SDK position, velocity and acceleration topics").c_str());
+                //std::cout << "Subscribe to Onboard SDK position, velocity and acceleration topics" << std::endl;
                 // Telemetry: Subscribe to quaternion, fused lat/lon and altitude at freq 50
                 // Hz
                 pkgIndex                  = 1;
@@ -340,7 +352,7 @@ public:
                     throw std::runtime_error(func);
                 }
             }
-            DSTATUS(std::string("Started all flight controller subscriptions").c_str());
+            //std::cout << "Started all flight controller subscriptions" << std::endl;
         }
     }
 
@@ -680,16 +692,16 @@ public:
         bool rc = false;
         if (arm)
         {
-            addStatusMessage(std::string("Arm vehicle"));
+            addStatusMessage(std::string(diagnostic_messages_.armVehicle));
             onboard_vehicle_->control->armMotors(1000);
             setOrigin(true);
-            addStatusMessage(std::string("Motors Armed"));
+            addStatusMessage(std::string(diagnostic_messages_.motorsArmed));
         }
         else 
         {
-            addStatusMessage(std::string("Disarm Vehicle"));
+            addStatusMessage(std::string(diagnostic_messages_.disarmVehicle));
             onboard_vehicle_->control->disArmMotors(1000);
-            addStatusMessage(std::string("Motors Disarmed"));
+            addStatusMessage(std::string(diagnostic_messages_.motorsDisarmed));
         }
         return rc;
     }
@@ -754,8 +766,7 @@ public:
             throw VehicleMoveException("Takeoff failed. Error sending takeoff command.");
         }
 
-        // First check: Motors started        
-        addStatusMessage(std::string("Start Takeoff"));
+        // First check: Motors started
         addStatusMessage(std::string("Check motors"));
         int motorsNotStarted = 0;
         int timeoutCycles    = 20;
@@ -767,14 +778,14 @@ public:
                 motorsNotStarted < timeoutCycles)
         {
             motorsNotStarted++;
-            fprintf(stderr, "Motors not started %d, %d\n", onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>(), onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>() );
+            // fprintf(stderr, "Motors not started %d, %d\n", onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>(), onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>() );
             updateState();
             usleep(1000000);
         }
 
         if (motorsNotStarted == timeoutCycles)
         {
-            std::cout << "Takeoff failed. Motors are not spinning." << std::endl;
+            //std::cout << "Takeoff failed. Motors are not spinning." << std::endl;
             // Cleanup
             // onboard_vehicle_->subscribe->removePackage(0, timeout);
             throw VehicleMoveException("Takeoff failed. Motors are not spinning.");
@@ -803,9 +814,9 @@ public:
 
         if (stillOnGround == timeoutCycles)
         {
-            std::cout << "Takeoff failed. Aircraft is still on the ground, but the "
-                        "motors are spinning."
-                    << std::endl;
+            //std::cout << "Takeoff failed. Aircraft is still on the ground, but the "
+            //            "motors are spinning."
+            //        << std::endl;
             // Cleanup
             //onboard_vehicle_->subscribe->removePackage(0, timeout);
             throw VehicleMoveException("Takeoff failed. Aircraft is still on the ground, but the motors are spinning");
@@ -835,9 +846,9 @@ public:
         }
         else
         {
-            std::cout
-            << "Takeoff finished, but the aircraft is in an unexpected mode. "
-                "Please connect DJI GO.\n";
+            //std::cout
+            //<< "Takeoff finished, but the aircraft is in an unexpected mode. "
+            //    "Please connect DJI GO.\n";
             // onboard_vehicle_->subscribe->removePackage(0, timeout);
             throw VehicleMoveException("Takeoff finished, but the aircraft is in an unexpected mode.");
         }
@@ -906,7 +917,7 @@ public:
 
         if (landingNotStarted == timeoutCycles)
         {
-            std::cout << "Landing failed. Aircraft is still in the air." << std::endl;
+            //std::cout << "Landing failed. Aircraft is still in the air." << std::endl;
             throw VehicleMoveException("Landing failed. Aircraft is still in the air.");
         }
         else
@@ -933,9 +944,9 @@ public:
         }
         else
         {
-            std::cout
-            << "Landing finished, but the aircraft is in an unexpected mode. "
-                "Please connect DJI GO.\n";
+            //std::cout
+            //<< "Landing finished, but the aircraft is in an unexpected mode. "
+            //    "Please connect DJI GO.\n";
             return false;
         }
         return true;
@@ -971,7 +982,7 @@ public:
 
             if (commandNotStarted == timeoutCycles)
             {
-                std::cout << "Return home command failed. Aircraft is in incorrect mode." << std::endl;
+                //std::cout << "Return home command failed. Aircraft is in incorrect mode." << std::endl;
                 // Cleanup before return
                 throw VehicleMoveException("Return home command failed. Aircraft is in incorrect mode.");
             }
@@ -999,8 +1010,8 @@ public:
             }
             else
             {
-                std::cout
-                << "Return home finished, but the aircraft is in an unexpected mode.\n";
+                //std::cout
+                //<< "Return home finished, but the aircraft is in an unexpected mode.\n";
             }
         }
         return rc;
