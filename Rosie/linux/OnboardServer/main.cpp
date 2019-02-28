@@ -38,7 +38,7 @@ int main(int argc, char** argv)
     DJI::OSDK::Log::instance().title(1, "STATUS").print(std::string("Start Onboard Server").c_str());    
     std::cout << std::endl;
 
-    OnboardDroneController::ConnectionInfo connection_info;
+    OnboardMultirotorApi::ConnectionInfo connection_info;
     std::string host_ip = "127.0.0.1";
     int host_port = 41451;
     std::string onboard_version = "[Undefined]";
@@ -70,7 +70,6 @@ int main(int argc, char** argv)
     else 
     {
         std::cout << "\nCould not load settings from " << Settings::singleton().getFullFilePath() << std::endl;
-        DERROR(std::string("Could not load settings from ~/Docuements/AirSim/settings.json").c_str());
         return 3;
     }
 
@@ -81,7 +80,6 @@ int main(int argc, char** argv)
     OnboardMultirotorApi onboard_api;
     onboard_api.initialize(connection_info, nullptr, is_simulation, onboard_argc, onboard_argv);
     onboard_api.reset();
-    RealMultirotorConnector connector(& onboard_drone);
 
     std::cout << "Start Onboard RPC server" << std::endl;
     

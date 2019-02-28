@@ -77,9 +77,6 @@ public:
     //non-base interface specific to OnboardMultirotorApi
     void initialize(const ConnectionInfo& connection_info, const SensorCollection* sensors, bool is_simulation, int argc, char** argv)
     {
-        DiagnosticMessages diagnostic_messages;
-        diagnostic_messages_ = diagnostic_messages;
-    
         connection_info_ = connection_info;
         sensors_ = sensors;
         is_simulation_mode_ = is_simulation;
@@ -99,7 +96,7 @@ public:
             initializeOnboardSubscriptions();
             //std::cout << "Set position origin" << std::endl;
             setOrigin(false);
-            is_avaiis_ready_lable_ = true;
+            is_ready_ = true;
             //std::cout << "Vehicle initialized" << std::endl;
         }
         catch (std::exception& ex) {
@@ -200,14 +197,12 @@ public:
         currentSubscriptionGPS = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_GPS_FUSED>();
         currentVelocity = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_VELOCITY>();
         currentOrientation = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_QUATERNION>();
-        Telemetry::Vector3f eulerOrientation = toEulerAngle((static_cast<void*>(&currentOrientation)));
+        Telemetry::Vector3f eulerOrientation = toEulerAngle(&currentOrientation);
         currentAngularRate = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_ANGULAR_RATE_FUSIONED>();
         currentAccelerationGround = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_ACCELERATION_GROUND>();
         currentAccelerationBody = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_ACCELERATION_BODY>();
 
-        localOffsetFromGpsOffset(localOffset,
-                                static_cast<void*>(&currentSubscriptionGPS),
-                                static_cast<void*>(&originGPS));
+        localOffsetFromGpsOffset(localOffset,&currentSubscriptionGPS,&originGPS);
 
         state.pose.position = Vector3r(localOffset.x, localOffset.y, -localOffset.z);
         state.pose.orientation = VectorMath::toQuaternion(eulerOrientation.x, eulerOrientation.y, eulerOrientation.z);
@@ -244,9 +239,7 @@ public:
         Telemetry::TypeMap<Telemetry::TOPIC_GPS_FUSED>::type currentSubscriptionGPS;
         Telemetry::Vector3f localOffset;
         currentSubscriptionGPS = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_GPS_FUSED>();
-        localOffsetFromGpsOffset(localOffset,
-                                static_cast<void*>(&currentSubscriptionGPS),
-                                static_cast<void*>(&originGPS));
+        localOffsetFromGpsOffset(localOffset, &currentSubscriptionGPS, &originGPS);
         return Vector3r(localOffset.x, localOffset.y, -localOffset.z);
     }
 
@@ -263,14 +256,14 @@ public:
         updateState();
         Telemetry::TypeMap<Telemetry::TOPIC_QUATERNION>::type currentOrientation;
         currentOrientation = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_QUATERNION>();
-        Telemetry::Vector3f euler = toEulerAngle((static_cast<void*>(&currentOrientation)));
+        Telemetry::Vector3f euler = toEulerAngle(&currentOrientation);
         return VectorMath::toQuaternion(euler.x, euler.y, euler.z);
     }
 
     virtual LandedState getLandedState() const override
     {
         updateState();
-        return current_state == VehicleStatus::FlightStatus::IN_AIR ? LandedState::Flying : LandedState::Landed;
+        return current_state_ == VehicleStatus::FlightStatus::IN_AIR ? LandedState::Flying : LandedState::Landed;
     }
 
     virtual real_T getActuation(unsigned int rotor_index) const override
@@ -420,7 +413,7 @@ public:
             throw VehicleMoveException("Takeoff finished, but the aircraft is in an unexpected mode.");
         }
         
-        if (max_wait_seconds <= 0)
+        if (timeout_sec <= 0)
             return true; // client doesn't want to wait.
 
         return waitForZ(timeout_sec, z, getDistanceAccuracy());
@@ -430,6 +423,7 @@ public:
     {
         SingleCall lock(this);
         char func[50];
+        int  timeout = 100000;
 
         updateState();
         checkVehicle();
@@ -437,7 +431,7 @@ public:
         // Telemetry: Verify the subscription
         addStatusMessage(std::string("Verify vehicle connection"));
         ACK::ErrorCode subscribeStatus;
-        subscribeStatus = onboard_vehicle_->subscribe->verify(max_wait_seconds);
+        subscribeStatus = onboard_vehicle_->subscribe->verify(timeout);
         if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
         {
             ACK::getErrorCodeMessage(subscribeStatus, func);
@@ -445,7 +439,7 @@ public:
         }
 
         // Start landing
-        ACK::ErrorCode landingStatus = onboard_vehicle_->control->land(max_wait_seconds);
+        ACK::ErrorCode landingStatus = onboard_vehicle_->control->land(timeout);
         if (ACK::getError(landingStatus) != ACK::SUCCESS)
         {
             ACK::getErrorCodeMessage(landingStatus, func);
@@ -506,10 +500,12 @@ public:
     {
         SingleCall lock(this);
         char func[50];
+        int  timeout = 100000;
+
         checkVehicle();
         bool rc = false;
         if (onboard_vehicle_ != nullptr) {
-            ACK::ErrorCode takeoffStatus = onboard_vehicle_->control->goHome(60000);
+            ACK::ErrorCode takeoffStatus = onboard_vehicle_->control->goHome(timeout);
             if (ACK::getError(takeoffStatus) != ACK::SUCCESS)
             {
                 ACK::getErrorCodeMessage(takeoffStatus, func);
@@ -618,11 +614,7 @@ protected: //methods
     {
         // addStatusMessage(std::string("Received Command RollPitchZ"));
         checkVehicle();
-        uint8_t yaw_logic = DJI::OSDK::Control::YawLogic::YAW_RATE;
-        if (!yaw_mode.is_rate)
-        {
-            yaw_logic = DJI::OSDK::Control::YawLogic::YAW_ANGLE;
-        }
+        uint8_t yaw_logic = DJI::OSDK::Control::YawLogic::YAW_ANGLE;
         uint8_t mode = DJI::OSDK::Control::HorizontalLogic::HORIZONTAL_ANGLE |
             DJI::OSDK::Control::VerticalLogic::VERTICAL_POSITION |
             yaw_logic |
@@ -631,7 +623,7 @@ protected: //methods
         {
             pitch = 0.001f;
         }
-        DJI::OSDK::Control::CtrlData flightControl(mode, pitch, roll, -z, yaw_mode.yaw_or_rate);
+        DJI::OSDK::Control::CtrlData flightControl(mode, pitch, roll, -z, yaw);
         onboard_vehicle_->control->flightCtrl(flightControl);
     }
 
@@ -640,10 +632,6 @@ protected: //methods
         // addStatusMessage(std::string("Received Command RollPitchThrottle,") + "vx:" + std::to_string(vx) + ",vy:" + std::to_string(vy) + ",vz:" + std::to_string(vz) + ",yaw or rate:" + std::to_string(yaw_mode.yaw_or_rate));
         checkVehicle();
         uint8_t yaw_logic = DJI::OSDK::Control::YawLogic::YAW_RATE;
-        if (!yaw_mode.is_rate)
-        {
-            yaw_logic = DJI::OSDK::Control::YawLogic::YAW_ANGLE;
-        }
         uint8_t mode = DJI::OSDK::Control::HorizontalLogic::HORIZONTAL_ANGLE |
             DJI::OSDK::Control::VerticalLogic::VERTICAL_THRUST |
             yaw_logic |
@@ -652,7 +640,7 @@ protected: //methods
         {
             pitch = 0.001f;
         }
-        DJI::OSDK::Control::CtrlData flightControl(mode, pitch, roll, throttle, yaw_mode.yaw_or_rate);
+        DJI::OSDK::Control::CtrlData flightControl(mode, pitch, roll, throttle, yaw_rate);
         onboard_vehicle_->control->flightCtrl(flightControl);
     }
 
@@ -805,7 +793,7 @@ private: // methods
         actuators_message_supported_ = false;
         last_gps_time_ = 0;
         state_version_ = 0;
-        current_state = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>();
+        current_state_ = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>();
         target_height_ = 0;
         is_api_control_enabled_ = false;
         thrust_controller_ = PidController();
@@ -814,14 +802,14 @@ private: // methods
         mocap_pose_ = Pose::nanPose();
     }
 
-    void updateState()
+    void updateState() const
     {
         StatusLock lock(this);
         if (onboard_vehicle_ != nullptr) {
             int version = onboard_vehicle_->getLastReceivedFrame().recvInfo.version;
             if (version != state_version_)
             {
-                current_state = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>();
+                current_state_ = onboard_vehicle_->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>();
                 state_version_ = version;
             }
         }
@@ -973,7 +961,7 @@ private: // methods
     /*! Very simple calculation of local NED offset between two pairs of GPS
     /coordinates. Accurate when distances are small.
     !*/
-    void localOffsetFromGpsOffset(Telemetry::Vector3f& deltaNed, void* target, void* origin)
+    void localOffsetFromGpsOffset(Telemetry::Vector3f& deltaNed, Telemetry::GPSFused* target, Telemetry::GPSFused* origin) const
     {
         Telemetry::GPSFused*       subscriptionTarget;
         Telemetry::GPSFused*       subscriptionOrigin;
@@ -989,7 +977,7 @@ private: // methods
         deltaNed.z = subscriptionTarget->altitude - subscriptionOrigin->altitude;
     }
 
-    Telemetry::Vector3f toEulerAngle(void* quaternionData)
+    Telemetry::Vector3f toEulerAngle(Telemetry::Quaternion* quaternionData) const
     {
         Telemetry::Vector3f    ans;
         Telemetry::Quaternion* quaternion = (Telemetry::Quaternion*)quaternionData;
@@ -1011,12 +999,12 @@ private: // methods
         return ans;
     }
 
-    inline double rad2Deg(const double radians)
+    inline double rad2Deg(const double radians) const
     {
         return (radians / M_PI) * 180.0;
     }
 
-    inline double deg2Rad(const double degrees)
+    inline double deg2Rad(const double degrees) const
     {
         return (degrees / 180.0) * M_PI;
     }
@@ -1055,10 +1043,10 @@ private: // variables
     Pose mocap_pose_;
 
     Vehicle* onboard_vehicle_;
-    int state_version_;
-    int current_state;
+    mutable int state_version_;
+    mutable int current_state_;
     
-    Telemetry::TypeMap<Telemetry::TOPIC_GPS_FUSED>::type originGPS;
+    mutable Telemetry::TypeMap<Telemetry::TOPIC_GPS_FUSED>::type originGPS;
     bool is_wellknown_origin_;
     float target_height_;
     bool is_api_control_enabled_;
