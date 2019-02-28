@@ -7,10 +7,8 @@
 #include <dji_control.hpp>
 #include <dji_status.hpp>
 
-#include "vehicles/multirotor/controllers/DroneControllerBase.hpp"
-#include "vehicles/multirotor/controllers/RealMultirotorConnector.hpp"
 #include "vehicles/multirotor/api/MultirotorRpcLibServer.hpp"
-#include "vehicles/multirotor/controllers/OnboardDroneController.hpp"
+#include "vehicles/multirotor/firmwares/dji/OnboardMultirotorApi.hpp"
 #include "common/Settings.hpp"
 
 
@@ -80,15 +78,17 @@ int main(int argc, char** argv)
     char* onboard_argv[] = { argv[0], &onboardconfig_full_filepath[0] };
 
     std::cout << "Initialize flight controller" << std::endl;
-    OnboardDroneController onboard_drone;
-    onboard_drone.initialize(connection_info, nullptr, is_simulation, onboard_argc, onboard_argv);
-    onboard_drone.reset();
+    OnboardMultirotorApi onboard_api;
+    onboard_api.initialize(connection_info, nullptr, is_simulation, onboard_argc, onboard_argv);
+    onboard_api.reset();
     RealMultirotorConnector connector(& onboard_drone);
 
     std::cout << "Start Onboard RPC server" << std::endl;
-    MultirotorApi server_wrapper(& connector);
-    msr::airlib::MultirotorRpcLibServer server(&server_wrapper, host_ip, host_port);
-    server.start(false);
+    
+    ApiProvider api_provider(nullptr);
+    api_provider.insert_or_assign("", &onboard_api, nullptr);
+    msr::airlib::MultirotorRpcLibServer server(&api_provider, host_ip, host_port);
+    server.start(false, 4);
 
     std::cout << std::endl << std::endl << "Onboard RPC Server started" << std::endl;
     std::cout << "Hit Ctrl+C to terminate." << std::endl;
@@ -97,15 +97,15 @@ int main(int argc, char** argv)
     std::vector<std::string> messages;
     while (true) {
         //check messages
-        server_wrapper.getStatusMessages(messages);
+        onboard_api.getStatusMessages(messages);
         if (messages.size() > 1) {
-            for (std::string& message : messages) {
+            for (const std::string& message : messages) {
                 DJI::OSDK::Log::instance().title(1, "STATUS").print(message.c_str());
             }
         }
         constexpr static std::chrono::milliseconds MessageCheckDurationMillis(100);
         std::this_thread::sleep_for(MessageCheckDurationMillis);
-        onboard_drone.reportTelemetry(100);
+        onboard_api.sendTelemetry();
     }
     std::cout << std::endl << "Server Stopped" << std::endl;
     DSTATUS(std::string("Onboard server stopped").c_str());
