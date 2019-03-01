@@ -82,22 +82,22 @@ public:
         is_simulation_mode_ = is_simulation;
 
         try {
-            //std::cout << "Initialize vehicle" << std::endl;
+            std::cout << "Initialize vehicle" << std::endl;
             //std::cout << "Initialize Onboard SDK Linux environment" << std::endl;
             linuxEnvironment = new LinuxSetup(argc, argv);
             if (linuxEnvironment == NULL)
             {
                 throw std::runtime_error("Error initializing Onboard SDK Linux environment");
             }
-            //std::cout << "Connect to flight controller" << std::endl;
+            std::cout << "Connect to flight controller" << std::endl;
             onboard_vehicle_ = linuxEnvironment->getVehicle();
             //connectToVideoServer();
-            //std::cout << "Initialize vehicle data subscriptions" << std::endl;
+            std::cout << "Initialize vehicle data subscriptions" << std::endl;
             initializeOnboardSubscriptions();
-            //std::cout << "Set position origin" << std::endl;
+            std::cout << "Set position origin" << std::endl;
             setOrigin(false);
             is_ready_ = true;
-            //std::cout << "Vehicle initialized" << std::endl;
+            std::cout << "Vehicle initialized" << std::endl;
         }
         catch (std::exception& ex) {
             is_ready_ = false;
@@ -828,7 +828,7 @@ private: // methods
     void initializeOnboardSubscriptions()
     {
         if (onboard_vehicle_ != nullptr) {
-            //std::cout << "Initialize subscriptions" << std::endl;
+            std::cout << std::endl << "Initialize subscriptions" << std::endl;
             is_any_heartbeat_ = false;
             is_armed_ = false;
             is_controls_0_1_ = true;
@@ -844,7 +844,7 @@ private: // methods
                 throw std::runtime_error("Error verifying flight controller data");
             }
             {
-                //std::cout << "Subscribe to Onboard SDK flight status and vehicle status topics" << std::endl;
+                std::cout << std::endl << "Subscribe to Onboard SDK flight status and vehicle status topics" << std::endl;
                 // Telemetry: Subscribe to flight status and mode at freq 10 Hz
                 pkgIndex                  = 0;
                 int       freq            = 10;
@@ -869,7 +869,7 @@ private: // methods
                 }
             }
             {
-                //std::cout << "Subscribe to Onboard SDK position, velocity and acceleration topics" << std::endl;
+                std::cout << std::endl << "Subscribe to Onboard SDK position, velocity and acceleration topics" << std::endl;
                 // Telemetry: Subscribe to quaternion, fused lat/lon and altitude at freq 50
                 // Hz
                 pkgIndex                  = 1;
@@ -878,7 +878,6 @@ private: // methods
                 { 
                     Telemetry::TOPIC_QUATERNION, 
                     Telemetry::TOPIC_GPS_FUSED, 
-                    Telemetry::TOPIC_GPS_POSITION, 
                     Telemetry::TOPIC_VELOCITY,  
                     Telemetry::TOPIC_ANGULAR_RATE_FUSIONED, 
                     Telemetry::TOPIC_ACCELERATION_GROUND, 
@@ -903,7 +902,7 @@ private: // methods
                     throw std::runtime_error(func);
                 }
             }
-            //std::cout << "Started all flight controller subscriptions" << std::endl;
+            std::cout << std::endl << "Started all flight controller subscriptions" << std::endl;
         }
     }
 

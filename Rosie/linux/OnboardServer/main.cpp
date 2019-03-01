@@ -98,7 +98,8 @@ int main(int argc, char** argv)
         onboard_api.getStatusMessages(messages);
         if (messages.size() > 1) {
             for (const std::string& message : messages) {
-                DJI::OSDK::Log::instance().title(1, "STATUS").print(message.c_str());
+                // DJI::OSDK::Log::instance().title(1, "STATUS").print(message.c_str());
+                std:cout << std::endl << message << std::endl;
             }
         }
         constexpr static std::chrono::milliseconds MessageCheckDurationMillis(100);
