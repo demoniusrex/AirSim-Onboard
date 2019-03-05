@@ -2,6 +2,7 @@
 Microsoft AirSim multi-rotor implementation for DJI Onboard-SDK compatible flight controllers
 
 Project code-name: Rosie
+
 _Work in progress_
 
 Milestone: v0.3
