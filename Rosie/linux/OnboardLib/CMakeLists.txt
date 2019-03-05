@@ -9,7 +9,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++14 -pthread -g -O0")
 
 IncludeEigen()
 
-include_directories(${ROSIE_AIRSIM_SOURCE}/DroneServer)
+#include_directories(${ROSIE_AIRSIM_SOURCE}/DroneServer)
 include_directories(${ROSIE_AIRSIM_SOURCE}/MavLinkCom/include)
 include_directories(${ROSIE_AIRSIM_SOURCE}/${RPC_LIB_INCLUDES})
 include_directories(${ROSIE_AIRSIM_SOURCE}/AirLib/include)
@@ -27,8 +27,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../common)
 file(GLOB_RECURSE ${PROJECT_NAME}_sources 
   ${CMAKE_CURRENT_SOURCE_DIR}/../common/dji_linux_environment.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../common/dji_linux_helpers.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/vehicles/multirotor/configs/*.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/vehicles/multirotor/controllers/*.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/vehicles/multirotor/firmwares/dji/*.hpp
 )
 
 add_library(${PROJECT_NAME} STATIC ${${PROJECT_NAME}_sources})

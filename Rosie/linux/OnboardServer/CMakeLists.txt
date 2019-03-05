@@ -9,7 +9,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++14 -pthread -g -O0")
 
 IncludeEigen()
 
-include_directories(${ROSIE_AIRSIM_SOURCE}/DroneServer)
+#include_directories(${ROSIE_AIRSIM_SOURCE}/DroneServer)
 include_directories(${ROSIE_AIRSIM_SOURCE}/MavLinkCom/include)
 include_directories(${ROSIE_AIRSIM_SOURCE}/${RPC_LIB_INCLUDES})
 include_directories(${ROSIE_AIRSIM_SOURCE}/AirLib/include)
